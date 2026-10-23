@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
+import '../../core/session/session_manager.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../core/widgets/status_chips.dart';
@@ -20,6 +21,7 @@ class _RentalsTabState extends State<RentalsTab>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final _repo = RentalRepository();
+  bool _onlyMyRentals = true;
 
   late Future<List<RentalView>> _future = _load();
 
@@ -40,7 +42,14 @@ class _RentalsTabState extends State<RentalsTab>
         _ => RentalStatus.annulee,
       };
 
-  Future<List<RentalView>> _load() => _repo.getViewsByStatus(_currentStatus);
+  Future<List<RentalView>> _load() {
+    final user = SessionManager.instance.currentUser;
+    return _repo.getViewsByStatus(
+      _currentStatus,
+      userId: _onlyMyRentals ? user?.id : null,
+      userEmail: _onlyMyRentals ? user?.email : null,
+    );
+  }
 
   void _reload() {
     setState(() {
@@ -71,6 +80,34 @@ class _RentalsTabState extends State<RentalsTab>
       ),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _onlyMyRentals ? 'Mes réservations' : 'Toutes les locations',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                FilterChip(
+                  avatar: Icon(
+                    _onlyMyRentals ? Icons.person : Icons.group,
+                    size: 16,
+                  ),
+                  label: Text(_onlyMyRentals ? 'Mes locations' : 'Toutes'),
+                  selected: _onlyMyRentals,
+                  onSelected: (val) {
+                    setState(() {
+                      _onlyMyRentals = val;
+                      _reload();
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
           TabBar(
             controller: _tabController,
             isScrollable: true,

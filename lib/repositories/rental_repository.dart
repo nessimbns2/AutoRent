@@ -8,9 +8,29 @@ import '../models/rental.dart';
 class RentalRepository {
   Future<Database> get _db => DatabaseHelper.instance.database;
 
-  Future<List<RentalView>> getViewsByStatus(RentalStatus status) async {
+  Future<List<RentalView>> getViewsByStatus(
+    RentalStatus status, {
+    int? userId,
+    String? userEmail,
+  }) async {
     final db = await _db;
-    final rows = await db.rawQuery('''
+    final where = <String>['r.statut = ?'];
+    final args = <Object?>[status.value];
+
+    if (userId != null || (userEmail != null && userEmail.isNotEmpty)) {
+      final userConditions = <String>[];
+      if (userId != null) {
+        userConditions.add('r.user_id = ?');
+        args.add(userId);
+      }
+      if (userEmail != null && userEmail.isNotEmpty) {
+        userConditions.add('LOWER(c.email) = ?');
+        args.add(userEmail.toLowerCase());
+      }
+      where.add('(${userConditions.join(' OR ')})');
+    }
+
+    final sql = '''
       SELECT r.*,
              c.nom || ' ' || c.prenom AS client_name,
              v.marque || ' ' || v.modele || ' · ' || v.immatriculation AS vehicle_label,
@@ -19,9 +39,10 @@ class RentalRepository {
       JOIN clients c ON c.id = r.client_id
       JOIN vehicles v ON v.id = r.vehicle_id
       LEFT JOIN users u ON u.id = r.user_id
-      WHERE r.statut = ?
+      WHERE ${where.join(' AND ')}
       ORDER BY r.date_debut DESC
-    ''', [status.value]);
+    ''';
+    final rows = await db.rawQuery(sql, args);
     return [
       for (final r in rows)
         RentalView(
@@ -128,10 +149,34 @@ class RentalRepository {
     return rows.isEmpty ? null : Rental.fromMap(rows.first);
   }
 
-  Future<Map<RentalStatus, int>> countByStatus() async {
+  Future<Map<RentalStatus, int>> countByStatus({
+    int? userId,
+    String? userEmail,
+  }) async {
     final db = await _db;
-    final rows = await db
-        .rawQuery('SELECT statut, COUNT(*) AS cnt FROM rentals GROUP BY statut');
+    String sql;
+    List<Object?> args = [];
+    if (userId != null || (userEmail != null && userEmail.isNotEmpty)) {
+      final userConditions = <String>[];
+      if (userId != null) {
+        userConditions.add('r.user_id = ?');
+        args.add(userId);
+      }
+      if (userEmail != null && userEmail.isNotEmpty) {
+        userConditions.add('LOWER(c.email) = ?');
+        args.add(userEmail.toLowerCase());
+      }
+      sql = '''
+        SELECT r.statut, COUNT(*) AS cnt
+        FROM rentals r
+        JOIN clients c ON c.id = r.client_id
+        WHERE ${userConditions.join(' OR ')}
+        GROUP BY r.statut
+      ''';
+    } else {
+      sql = 'SELECT statut, COUNT(*) AS cnt FROM rentals GROUP BY statut';
+    }
+    final rows = await db.rawQuery(sql, args);
     final result = <RentalStatus, int>{};
     for (final r in rows) {
       try {

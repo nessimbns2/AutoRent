@@ -80,6 +80,14 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
 
   Future<void> _load() async {
     _clients = await _clientRepo.getAll();
+    final currentUser = SessionManager.instance.currentUser;
+    if (!_isEdit && currentUser != null) {
+      final myClient = await _clientRepo.getOrCreateForUser(currentUser);
+      _selectedClientId ??= myClient.id;
+      if (!_clients.any((c) => c.id == myClient.id)) {
+        _clients.insert(0, myClient);
+      }
+    }
     if (_isEdit) {
       _existing = await _rentalRepo.getById(widget.rentalId!);
       if (_existing != null) {

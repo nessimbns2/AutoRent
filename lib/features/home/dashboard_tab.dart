@@ -5,6 +5,7 @@ import '../../repositories/rental_repository.dart';
 import '../../repositories/incident_repository.dart';
 import '../../repositories/vehicle_repository.dart';
 import '../../app/routes.dart';
+import '../../core/session/session_manager.dart';
 import '../../core/widgets/shared_widgets.dart';
 
 class DashboardTab extends StatefulWidget {
@@ -23,7 +24,11 @@ class _DashboardTabState extends State<DashboardTab> {
   late Future<Map<String, int>> _future = _load();
 
   Future<Map<String, int>> _load() async {
-    final rentalCounts = await _rentalRepo.countByStatus();
+    final user = SessionManager.instance.currentUser;
+    final rentalCounts = await _rentalRepo.countByStatus(
+      userId: user?.id,
+      userEmail: user?.email,
+    );
     final incidents = await _incidentRepo.getViewsByStatus(IncidentStatus.enAttente);
     final vehicles = await _vehicleRepo.getAll();
 

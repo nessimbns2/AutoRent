@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../core/database/database_helper.dart';
 import '../core/utils/app_exception.dart';
 import '../models/client.dart';
+import '../models/user.dart';
 
 class ClientRepository {
   Future<Database> get _db => DatabaseHelper.instance.database;
@@ -30,6 +31,28 @@ class ClientRepository {
     final db = await _db;
     final rows = await db.query('clients', where: 'id = ?', whereArgs: [id]);
     return rows.isEmpty ? null : Client.fromMap(rows.first);
+  }
+
+  Future<Client> getOrCreateForUser(User user) async {
+    final db = await _db;
+    final rows = await db.query(
+      'clients',
+      where: 'LOWER(email) = ?',
+      whereArgs: [user.email.toLowerCase()],
+    );
+    if (rows.isNotEmpty) {
+      return Client.fromMap(rows.first);
+    }
+    final client = Client(
+      lastName: user.lastName,
+      firstName: user.firstName,
+      phone: '',
+      email: user.email,
+      licenseNumber: 'Permis-${user.id ?? 1}',
+      createdAt: DateTime.now(),
+    );
+    final id = await insert(client);
+    return client.copyWith(id: id);
   }
 
   Future<int> insert(Client client) async {
