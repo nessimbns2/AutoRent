@@ -10,7 +10,8 @@ class DatabaseHelper {
   static const _dbName = 'autorent.db';
 
   /// v2: adds `incident_history` (status changes of incidents: who / when).
-  static const _dbVersion = 2;
+  /// v3: adds `incidents.latitude` / `incidents.longitude` (map position).
+  static const _dbVersion = 3;
 
   Database? _db;
 
@@ -32,6 +33,7 @@ class DatabaseHelper {
       await db.execute(stmt);
     }
     await createIncidentHistory(db);
+    await addIncidentCoordinates(db);
     await _seed(db);
     await backfillIncidentHistory(db);
   }
@@ -40,6 +42,24 @@ class DatabaseHelper {
     if (oldV < 2) {
       await createIncidentHistory(db);
       await backfillIncidentHistory(db);
+    }
+    if (oldV < 3) {
+      await addIncidentCoordinates(db);
+    }
+  }
+
+  /// Schema v3 — optional map position of an incident. Idempotent: does
+  /// nothing when the columns already exist.
+  static Future<void> addIncidentCoordinates(DatabaseExecutor db) async {
+    final cols = {
+      for (final r in await db.rawQuery('PRAGMA table_info(incidents)'))
+        r['name'] as String,
+    };
+    if (!cols.contains('latitude')) {
+      await db.execute('ALTER TABLE incidents ADD COLUMN latitude REAL');
+    }
+    if (!cols.contains('longitude')) {
+      await db.execute('ALTER TABLE incidents ADD COLUMN longitude REAL');
     }
   }
 
@@ -345,6 +365,7 @@ class DatabaseHelper {
       required String type,
       required int daysAgo,
       required String lieu,
+      required (double lat, double lng) position,
       required String description,
       required List<(String statut, int userId, DateTime at)> history,
     }) async {
@@ -355,6 +376,8 @@ class DatabaseHelper {
         'type': type,
         'date': _isoDate(now.subtract(Duration(days: daysAgo))),
         'lieu': lieu,
+        'latitude': position.$1,
+        'longitude': position.$2,
         'description': description,
         'statut': history.last.$1,
         'created_at': history.first.$3.toIso8601String(),
@@ -378,6 +401,7 @@ class DatabaseHelper {
       type: 'accident',
       daysAgo: 12,
       lieu: 'Tunis centre',
+      position: (36.7992, 10.1802),
       description: 'Accrochage léger en parking. Pare-choc avant endommagé.',
       history: [('en_attente', agentId, ago(12, 10, 15))],
     );
@@ -388,6 +412,7 @@ class DatabaseHelper {
       type: 'panne',
       daysAgo: 1,
       lieu: 'Autoroute A1 km 54',
+      position: (36.4650, 10.3720),
       description: "Crevaison lors d'un trajet. Roue de secours montée.",
       history: [
         ('en_attente', adminId, ago(1, 8, 40)),
@@ -401,6 +426,7 @@ class DatabaseHelper {
       type: 'panne',
       daysAgo: 3,
       lieu: 'Parking Lac 2, Tunis',
+      position: (36.8475, 10.2700),
       description:
           'Le véhicule ne démarre plus, batterie à plat. Dépanneuse appelée.',
       history: [
@@ -414,6 +440,7 @@ class DatabaseHelper {
       type: 'accident',
       daysAgo: 11,
       lieu: 'Avenue Habib Bourguiba, Tunis',
+      position: (36.7999, 10.1860),
       description: 'Choc arrière à un feu rouge. Feu arrière gauche cassé, constat amiable rempli.',
       history: [
         ('en_attente', agentId, ago(11, 17, 20)),
@@ -427,6 +454,7 @@ class DatabaseHelper {
       type: 'panne',
       daysAgo: 1,
       lieu: 'Route de la Marsa',
+      position: (36.8650, 10.3050),
       description: 'Voyant moteur allumé et perte de puissance en côte.',
       history: [('en_attente', adminId, ago(1, 18, 5))],
     );
@@ -437,6 +465,7 @@ class DatabaseHelper {
       type: 'accident',
       daysAgo: 0,
       lieu: 'Sousse, zone touristique',
+      position: (35.8600, 10.6100),
       description: 'Rayure profonde sur la portière arrière droite, constatée au retour du parking.',
       history: [
         ('en_attente', agentId, ago(0, 8, 30)),
@@ -449,6 +478,7 @@ class DatabaseHelper {
       type: 'panne',
       daysAgo: 20,
       lieu: 'Autoroute A1, sortie Hammamet',
+      position: (36.4220, 10.5650),
       description:
           'Pneu avant gauche éclaté. Remorquage jusqu\'au garage partenaire.',
       history: [
