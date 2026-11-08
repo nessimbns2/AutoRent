@@ -8,7 +8,9 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
 
   static const _dbName = 'autorent.db';
-  static const _dbVersion = 1;
+
+  /// v2: adds `incident_history` (status changes of incidents: who / when).
+  static const _dbVersion = 2;
 
   Database? _db;
 
@@ -29,11 +31,49 @@ class DatabaseHelper {
     for (final stmt in _schemaStatements) {
       await db.execute(stmt);
     }
+    await createIncidentHistory(db);
     await _seed(db);
+    await backfillIncidentHistory(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldV, int newV) async {
-    // if (oldV < 2) { await db.execute('ALTER TABLE ...'); }
+    if (oldV < 2) {
+      await createIncidentHistory(db);
+      await backfillIncidentHistory(db);
+    }
+  }
+
+  /// Schema v2 — one row per status change of an incident. `from_statut` is
+  /// NULL for the declaration itself.
+  static Future<void> createIncidentHistory(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS incident_history (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        incident_id        INTEGER NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+        from_statut        TEXT CHECK (from_statut IN ('en_attente','en_cours','resolu')),
+        to_statut          TEXT NOT NULL CHECK (to_statut IN ('en_attente','en_cours','resolu')),
+        changed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_at         TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_incident_history_incident '
+      'ON incident_history(incident_id, changed_at)',
+    );
+  }
+
+  /// Gives every incident without history a "declared" entry (current status,
+  /// declaring user, creation time) so old data shows up in the follow-up.
+  static Future<void> backfillIncidentHistory(DatabaseExecutor db) async {
+    await db.execute('''
+      INSERT INTO incident_history
+        (incident_id, from_statut, to_statut, changed_by_user_id, changed_at)
+      SELECT i.id, NULL, i.statut, i.reported_by_user_id, i.created_at
+      FROM incidents i
+      WHERE NOT EXISTS (
+        SELECT 1 FROM incident_history h WHERE h.incident_id = i.id
+      )
+    ''');
   }
 
   Future<void> close() async {
@@ -225,7 +265,7 @@ class DatabaseHelper {
       'disponible': 1,
       'created_at': ts,
     });
-    await db.insert('vehicles', {
+    final v5 = await db.insert('vehicles', {
       'marque': 'Dacia',
       'modele': 'Logan',
       'immatriculation': '654 TUN 3210',
@@ -291,29 +331,132 @@ class DatabaseHelper {
       'created_at': ts,
     });
 
-    // Incidents (2)
-    await db.insert('incidents', {
-      'vehicle_id': v1,
-      'rental_id': null,
-      'reported_by_user_id': agentId,
-      'type': 'accident',
-      'date': _isoDate(now.subtract(const Duration(days: 12))),
-      'lieu': 'Tunis centre',
-      'description': 'Accrochage léger en parking. Pare-choc avant endommagé.',
-      'statut': 'en_attente',
-      'created_at': ts,
-    });
-    await db.insert('incidents', {
-      'vehicle_id': v4,
-      'rental_id': r2,
-      'reported_by_user_id': adminId,
-      'type': 'panne',
-      'date': _isoDate(now.subtract(const Duration(days: 1))),
-      'lieu': 'Autoroute A1 km 54',
-      'description': "Crevaison lors d'un trajet. Roue de secours montée.",
-      'statut': 'resolu',
-      'created_at': ts,
-    });
+    // Incidents (7) — every status and type, each with its status history
+    // (who changed what, and when) so the follow-up dashboard has data.
+    DateTime ago(int days, [int hour = 9, int minute = 0]) {
+      final d = now.subtract(Duration(days: days));
+      return DateTime(d.year, d.month, d.day, hour, minute);
+    }
+
+    Future<void> incident({
+      required int vehicleId,
+      int? rentalId,
+      required int reportedBy,
+      required String type,
+      required int daysAgo,
+      required String lieu,
+      required String description,
+      required List<(String statut, int userId, DateTime at)> history,
+    }) async {
+      final id = await db.insert('incidents', {
+        'vehicle_id': vehicleId,
+        'rental_id': rentalId,
+        'reported_by_user_id': reportedBy,
+        'type': type,
+        'date': _isoDate(now.subtract(Duration(days: daysAgo))),
+        'lieu': lieu,
+        'description': description,
+        'statut': history.last.$1,
+        'created_at': history.first.$3.toIso8601String(),
+      });
+      String? from;
+      for (final (statut, userId, at) in history) {
+        await db.insert('incident_history', {
+          'incident_id': id,
+          'from_statut': from,
+          'to_statut': statut,
+          'changed_by_user_id': userId,
+          'changed_at': at.toIso8601String(),
+        });
+        from = statut;
+      }
+    }
+
+    await incident(
+      vehicleId: v1,
+      reportedBy: agentId,
+      type: 'accident',
+      daysAgo: 12,
+      lieu: 'Tunis centre',
+      description: 'Accrochage léger en parking. Pare-choc avant endommagé.',
+      history: [('en_attente', agentId, ago(12, 10, 15))],
+    );
+    await incident(
+      vehicleId: v4,
+      rentalId: r2,
+      reportedBy: adminId,
+      type: 'panne',
+      daysAgo: 1,
+      lieu: 'Autoroute A1 km 54',
+      description: "Crevaison lors d'un trajet. Roue de secours montée.",
+      history: [
+        ('en_attente', adminId, ago(1, 8, 40)),
+        ('en_cours', agentId, ago(1, 9, 5)),
+        ('resolu', agentId, ago(1, 14, 30)),
+      ],
+    );
+    await incident(
+      vehicleId: v2,
+      reportedBy: agentId,
+      type: 'panne',
+      daysAgo: 3,
+      lieu: 'Parking Lac 2, Tunis',
+      description:
+          'Le véhicule ne démarre plus, batterie à plat. Dépanneuse appelée.',
+      history: [
+        ('en_attente', agentId, ago(3, 9, 10)),
+        ('en_cours', adminId, ago(3, 11, 30)),
+      ],
+    );
+    await incident(
+      vehicleId: v1,
+      reportedBy: agentId,
+      type: 'accident',
+      daysAgo: 11,
+      lieu: 'Avenue Habib Bourguiba, Tunis',
+      description: 'Choc arrière à un feu rouge. Feu arrière gauche cassé, constat amiable rempli.',
+      history: [
+        ('en_attente', agentId, ago(11, 17, 20)),
+        ('en_cours', adminId, ago(10, 9, 0)),
+        ('resolu', adminId, ago(6, 16, 45)),
+      ],
+    );
+    await incident(
+      vehicleId: v3,
+      reportedBy: adminId,
+      type: 'panne',
+      daysAgo: 1,
+      lieu: 'Route de la Marsa',
+      description: 'Voyant moteur allumé et perte de puissance en côte.',
+      history: [('en_attente', adminId, ago(1, 18, 5))],
+    );
+    await incident(
+      vehicleId: v4,
+      rentalId: r2,
+      reportedBy: agentId,
+      type: 'accident',
+      daysAgo: 0,
+      lieu: 'Sousse, zone touristique',
+      description: 'Rayure profonde sur la portière arrière droite, constatée au retour du parking.',
+      history: [
+        ('en_attente', agentId, ago(0, 8, 30)),
+        ('en_cours', agentId, ago(0, 8, 50)),
+      ],
+    );
+    await incident(
+      vehicleId: v5,
+      reportedBy: adminId,
+      type: 'panne',
+      daysAgo: 20,
+      lieu: 'Autoroute A1, sortie Hammamet',
+      description:
+          'Pneu avant gauche éclaté. Remorquage jusqu\'au garage partenaire.',
+      history: [
+        ('en_attente', adminId, ago(20, 7, 45)),
+        ('en_cours', agentId, ago(20, 9, 15)),
+        ('resolu', agentId, ago(19, 12, 0)),
+      ],
+    );
   }
 
   static String _isoDate(DateTime d) => d.toIso8601String().substring(0, 10);
