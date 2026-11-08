@@ -87,10 +87,17 @@ class Incident {
 class IncidentView {
   final Incident incident;
   final String vehicleLabel;
+
+  /// Name of the user who declared the incident (null if the account was deleted).
   final String? reporterName;
+
+  /// Name of the renter of the linked rental (null when no rental is linked).
+  final String? clientName;
+
   const IncidentView({
     required this.incident,
     required this.vehicleLabel,
     this.reporterName,
+    this.clientName,
   });
 }
