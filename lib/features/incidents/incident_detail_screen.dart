@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
@@ -14,6 +15,8 @@ import '../../models/incident_stats.dart';
 import '../../models/vehicle.dart';
 import '../../repositories/incident_repository.dart';
 import '../../repositories/vehicle_repository.dart';
+import 'location/incident_map.dart';
+import 'location/location_picker_screen.dart';
 import 'widgets/incident_sheets.dart';
 import 'widgets/incident_ui.dart';
 
@@ -247,6 +250,29 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
                               value: inc.place,
                               color: inc.type.color,
                             ),
+                            if (inc.hasPosition)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+                                child: IncidentMapPreview(
+                                  point: LatLng(inc.latitude!, inc.longitude!),
+                                  pinColor: inc.type.color,
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => LocationPickerScreen(
+                                        initial: LatLng(
+                                          inc.latitude!,
+                                          inc.longitude!,
+                                        ),
+                                        initialAddress: inc.place,
+                                        readOnly: true,
+                                        title:
+                                            '${inc.type.label} #${inc.id} — lieu',
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             IncidentInfoTile(
                               icon: Icons.person_rounded,
                               label: 'Déclaré par',

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../core/constants/strings.dart';
 import '../../core/session/session_manager.dart';
@@ -14,6 +15,8 @@ import '../../models/vehicle.dart';
 import '../../repositories/incident_repository.dart';
 import '../../repositories/rental_repository.dart';
 import '../../repositories/vehicle_repository.dart';
+import 'location/incident_map.dart';
+import 'location/location_picker_screen.dart';
 import 'widgets/incident_sheets.dart';
 import 'widgets/incident_ui.dart';
 
@@ -51,6 +54,9 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
   final _descriptionController = TextEditingController();
   IncidentStatus _status = IncidentStatus.enAttente;
   List<String> _photos = [];
+
+  /// Optional position chosen on the map.
+  LatLng? _position;
 
   List<Vehicle> _vehicles = [];
   List<String> _recentPlaces = [];
@@ -112,6 +118,9 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
         _descriptionController.text = _existing!.description;
         _status = _existing!.status;
         _photos = List<String>.from(_existing!.photos);
+        if (_existing!.hasPosition) {
+          _position = LatLng(_existing!.latitude!, _existing!.longitude!);
+        }
       }
       // Keep the stored / prefilled link as is when opening the form; only
       // look up an active rental for a brand-new declaration.
@@ -135,7 +144,119 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
     _descriptionController.text.trim(),
     _status.value,
     _photos.join(','),
+    _position == null ? '' : formatLatLng(_position!),
   ].join('|');
+
+  Future<void> _pickLocation() async {
+    FocusScope.of(context).unfocus();
+    final picked = await Navigator.push<PickedLocation>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initial: _position,
+          initialAddress: _position == null
+              ? null
+              : _placeController.text.trim().isEmpty
+              ? null
+              : _placeController.text.trim(),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _position = picked.point;
+      // Fill "Lieu" from the map unless the agent already typed something.
+      if (picked.address != null && _placeController.text.trim().isEmpty) {
+        _placeController.text = picked.address!;
+      }
+    });
+    if (picked.address != null &&
+        _placeController.text.trim() != picked.address) {
+      _offerAddress(picked.address!);
+    }
+  }
+
+  void _offerAddress(String address) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('Utiliser « $address » comme lieu ?'),
+          action: SnackBarAction(
+            label: 'Utiliser',
+            onPressed: () => setState(() => _placeController.text = address),
+          ),
+        ),
+      );
+  }
+
+  Widget _buildLocationField() {
+    final scheme = Theme.of(context).colorScheme;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 250),
+      alignment: Alignment.topCenter,
+      child: _position == null
+          ? SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  foregroundColor: IncidentPalette.brown,
+                  side: BorderSide(
+                    color: IncidentPalette.brown.withValues(alpha: 0.5),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                onPressed: _pickLocation,
+                icon: const Icon(Icons.map_rounded),
+                label: const Text('Indiquer sur la carte'),
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                IncidentMapPreview(
+                  point: _position!,
+                  pinColor: _type.color,
+                  onTap: _pickLocation,
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.gps_fixed_rounded,
+                      size: 15,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        formatLatLng(_position!),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _pickLocation,
+                      child: const Text('Modifier'),
+                    ),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        foregroundColor: IncidentPalette.danger,
+                      ),
+                      onPressed: () => setState(() => _position = null),
+                      child: const Text('Retirer'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+    );
+  }
 
   bool get _hasUnsavedChanges => !_loading && _signature != _initialSignature;
 
@@ -230,6 +351,8 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
         description: _descriptionController.text.trim(),
         status: _status,
         photos: _photos,
+        latitude: _position?.latitude,
+        longitude: _position?.longitude,
         createdAt: _existing?.createdAt ?? DateTime.now(),
       );
 
@@ -383,6 +506,8 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                             textCapitalization: TextCapitalization.sentences,
                           ),
                           _buildPlaceSuggestions(),
+                          const SizedBox(height: 12),
+                          _buildLocationField(),
                         ],
                       ),
                     ),
