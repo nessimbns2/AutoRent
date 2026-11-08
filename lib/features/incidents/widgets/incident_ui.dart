@@ -4,63 +4,86 @@ import '../../../models/enums.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Visual identity of the incidents module (colors, icons, gradients)
+//
+// Palette built around the app's brown brand color: deep wine red for
+// accidents, slate blue for breakdowns, cognac / denim / forest green for the
+// statuses. No yellow or orange.
 // ─────────────────────────────────────────────────────────────────────────────
+
+abstract final class IncidentPalette {
+  static const brown = Color(0xFF8F4C33); // brand primary
+  static const brownDark = Color(0xFF5D2F1E);
+  static const wine = Color(0xFFA63A32);
+  static const wineDark = Color(0xFF6E1F1A);
+  static const slate = Color(0xFF4F6D85);
+  static const slateDark = Color(0xFF2E4356);
+  static const cognac = Color(0xFF9C6644);
+  static const denim = Color(0xFF3D6FA5);
+  static const forest = Color(0xFF3E7D5A);
+  static const danger = Color(0xFFB3261E);
+
+  static const brandGradient = LinearGradient(
+    colors: [brown, brownDark],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+}
 
 extension IncidentTypeStyle on IncidentType {
   Color get color => switch (this) {
-        IncidentType.accident => const Color(0xFFE53935),
-        IncidentType.panne => const Color(0xFFF57C00),
-      };
+    IncidentType.accident => IncidentPalette.wine,
+    IncidentType.panne => IncidentPalette.slate,
+  };
 
   IconData get icon => switch (this) {
-        IncidentType.accident => Icons.car_crash_rounded,
-        IncidentType.panne => Icons.car_repair_rounded,
-      };
+    IncidentType.accident => Icons.car_crash_rounded,
+    IncidentType.panne => Icons.build_rounded,
+  };
 
   String get hint => switch (this) {
-        IncidentType.accident => 'Collision, choc, accrochage',
-        IncidentType.panne => 'Moteur, batterie, pneu, électrique',
-      };
+    IncidentType.accident => 'Collision, choc, accrochage',
+    IncidentType.panne => 'Moteur, batterie, pneu, électrique',
+  };
 
   LinearGradient get gradient => switch (this) {
-        IncidentType.accident => const LinearGradient(
-            colors: [Color(0xFFE53935), Color(0xFFB71C1C)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        IncidentType.panne => const LinearGradient(
-            colors: [Color(0xFFFFA726), Color(0xFFE65100)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-      };
+    IncidentType.accident => const LinearGradient(
+      colors: [IncidentPalette.wine, IncidentPalette.wineDark],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    ),
+    IncidentType.panne => const LinearGradient(
+      colors: [IncidentPalette.slate, IncidentPalette.slateDark],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    ),
+  };
 }
 
 extension IncidentStatusStyle on IncidentStatus {
   Color get color => switch (this) {
-        IncidentStatus.enAttente => const Color(0xFFF59E0B),
-        IncidentStatus.enCours => const Color(0xFF3B82F6),
-        IncidentStatus.resolu => const Color(0xFF10B981),
-      };
+    IncidentStatus.enAttente => IncidentPalette.cognac,
+    IncidentStatus.enCours => IncidentPalette.denim,
+    IncidentStatus.resolu => IncidentPalette.forest,
+  };
 
   IconData get icon => switch (this) {
-        IncidentStatus.enAttente => Icons.hourglass_top_rounded,
-        IncidentStatus.enCours => Icons.engineering_rounded,
-        IncidentStatus.resolu => Icons.verified_rounded,
-      };
+    IncidentStatus.enAttente => Icons.schedule_rounded,
+    IncidentStatus.enCours => Icons.handyman_rounded,
+    IncidentStatus.resolu => Icons.check_circle_rounded,
+  };
 
   /// Plural label used on the list's status selector.
   String get pluralLabel => switch (this) {
-        IncidentStatus.enAttente => 'En attente',
-        IncidentStatus.enCours => 'En cours',
-        IncidentStatus.resolu => 'Résolus',
-      };
+    IncidentStatus.enAttente => 'En attente',
+    IncidentStatus.enCours => 'En cours',
+    IncidentStatus.resolu => 'Résolus',
+  };
 
   IncidentStatus? get next => switch (this) {
-        IncidentStatus.enAttente => IncidentStatus.enCours,
-        IncidentStatus.enCours => IncidentStatus.resolu,
-        IncidentStatus.resolu => null,
-      };
+    IncidentStatus.enAttente => IncidentStatus.enCours,
+    IncidentStatus.enCours => IncidentStatus.resolu,
+    IncidentStatus.resolu => null,
+  };
 }
 
 /// Hero tag shared by the list card badge and the detail header badge.
@@ -82,27 +105,28 @@ class IncidentTypeBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          gradient: onDark ? null : type.gradient,
-          color: onDark ? Colors.white.withValues(alpha: 0.2) : null,
-          borderRadius: BorderRadius.circular(size * 0.3),
-          border: onDark
-              ? Border.all(color: Colors.white.withValues(alpha: 0.5))
-              : null,
-          boxShadow: onDark
-              ? null
-              : [
-                  BoxShadow(
-                    color: type.color.withValues(alpha: 0.35),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-        ),
-        child: Icon(type.icon, color: Colors.white, size: size * 0.55),
-      );
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      gradient: onDark ? null : type.gradient,
+      color: onDark ? Colors.white.withValues(alpha: 0.2) : null,
+      borderRadius: BorderRadius.circular(size * 0.3),
+      border: onDark
+          ? Border.all(color: Colors.white.withValues(alpha: 0.5))
+          : null,
+      boxShadow: onDark
+          ? null
+          : [
+              BoxShadow(
+                color: type.color.withValues(alpha: 0.35),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+    ),
+    alignment: Alignment.center,
+    child: Icon(type.icon, color: Colors.white, size: size * 0.52),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,7 +135,11 @@ class IncidentTypeBadge extends StatelessWidget {
 class IncidentStatusPill extends StatelessWidget {
   final IncidentStatus status;
   final bool onDark;
-  const IncidentStatusPill({super.key, required this.status, this.onDark = false});
+  const IncidentStatusPill({
+    super.key,
+    required this.status,
+    this.onDark = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +158,7 @@ class IncidentStatusPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(status.icon, size: 14, color: fg),
-          const SizedBox(width: 4),
+          const SizedBox(width: 5),
           Text(
             status.label,
             style: TextStyle(
@@ -173,10 +201,14 @@ class EntranceAnimation extends StatefulWidget {
 
 class _EntranceAnimationState extends State<EntranceAnimation>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: widget.duration);
-  late final Animation<double> _curve =
-      CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+  );
+  late final Animation<double> _curve = CurvedAnimation(
+    parent: _c,
+    curve: Curves.easeOutCubic,
+  );
 
   @override
   void initState() {
@@ -198,16 +230,16 @@ class _EntranceAnimationState extends State<EntranceAnimation>
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-        animation: _curve,
-        builder: (context, child) => Opacity(
-          opacity: _curve.value,
-          child: Transform.translate(
-            offset: Offset(0, widget.offsetY * (1 - _curve.value)),
-            child: child,
-          ),
-        ),
-        child: widget.child,
-      );
+    animation: _curve,
+    builder: (context, child) => Opacity(
+      opacity: _curve.value,
+      child: Transform.translate(
+        offset: Offset(0, widget.offsetY * (1 - _curve.value)),
+        child: child,
+      ),
+    ),
+    child: widget.child,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -220,11 +252,11 @@ class AnimatedCount extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TweenAnimationBuilder<double>(
-        tween: Tween(end: value.toDouble()),
-        duration: const Duration(milliseconds: 700),
-        curve: Curves.easeOutCubic,
-        builder: (context, v, _) => Text('${v.round()}', style: style),
-      );
+    tween: Tween(end: value.toDouble()),
+    duration: const Duration(milliseconds: 700),
+    curve: Curves.easeOutCubic,
+    builder: (context, v, _) => Text('${v.round()}', style: style),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,9 +290,7 @@ class StatusSelectorCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? color : scheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected ? color : scheme.outlineVariant,
-          ),
+          border: Border.all(color: selected ? color : scheme.outlineVariant),
           boxShadow: selected
               ? [
                   BoxShadow(
@@ -292,8 +322,11 @@ class StatusSelectorCard extends StatelessWidget {
                               : color.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(status.icon,
-                            size: 16, color: selected ? Colors.white : color),
+                        child: Icon(
+                          status.icon,
+                          size: 16,
+                          color: selected ? Colors.white : color,
+                        ),
                       ),
                       const Spacer(),
                       AnimatedCount(
@@ -312,9 +345,7 @@ class StatusSelectorCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: selected
-                          ? Colors.white
-                          : scheme.onSurfaceVariant,
+                      color: selected ? Colors.white : scheme.onSurfaceVariant,
                     ),
                     child: Text(
                       status.pluralLabel,
@@ -363,7 +394,9 @@ class IncidentStatusTimeline extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: i == current ? FontWeight.w800 : FontWeight.w500,
+                    fontWeight: i == current
+                        ? FontWeight.w800
+                        : FontWeight.w500,
                     color: i <= current
                         ? scheme.onSurface
                         : scheme.onSurfaceVariant.withValues(alpha: 0.7),
@@ -380,7 +413,10 @@ class IncidentStatusTimeline extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                   child: Stack(
                     children: [
-                      Container(height: 6, color: scheme.surfaceContainerHighest),
+                      Container(
+                        height: 6,
+                        color: scheme.surfaceContainerHighest,
+                      ),
                       TweenAnimationBuilder<double>(
                         tween: Tween(end: i < current ? 1 : 0),
                         duration: const Duration(milliseconds: 600),
@@ -390,10 +426,9 @@ class IncidentStatusTimeline extends StatelessWidget {
                           child: Container(
                             height: 6,
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(colors: [
-                                steps[i].color,
-                                steps[i + 1].color,
-                              ]),
+                              gradient: LinearGradient(
+                                colors: [steps[i].color, steps[i + 1].color],
+                              ),
                             ),
                           ),
                         ),
@@ -440,13 +475,13 @@ class _StepDot extends StatelessWidget {
               ]
             : const [],
       ),
-      child: AnimatedSwitcher(
+      alignment: Alignment.center,
+      child: AnimatedOpacity(
         duration: const Duration(milliseconds: 300),
-        transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
+        opacity: reached ? 1 : 0.45,
         child: Icon(
-          reached && !isCurrent ? Icons.check_rounded : status.icon,
-          key: ValueKey('${status.value}-$reached-$isCurrent'),
-          size: 18,
+          status.icon,
+          size: isCurrent ? 20 : 17,
           color: reached ? Colors.white : scheme.onSurfaceVariant,
         ),
       ),
@@ -485,9 +520,11 @@ class IncidentInfoTile extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(9),
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: c.withValues(alpha: 0.12),
+                color: c.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, size: 20, color: c),
@@ -497,13 +534,21 @@ class IncidentInfoTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
-                      style: TextStyle(
-                          fontSize: 12, color: scheme.onSurfaceVariant)),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(value,
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w600)),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -556,13 +601,15 @@ class IncidentSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 20, color: scheme.primary),
-              const SizedBox(width: 8),
+              Icon(icon, size: 20, color: IncidentPalette.brown),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w700),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               ?trailing,
