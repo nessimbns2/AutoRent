@@ -2,15 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
+import '../../core/constants/strings.dart';
+import '../../core/utils/app_exception.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/widgets/shared_widgets.dart';
-import '../../core/widgets/status_chips.dart';
 import '../../models/enums.dart';
 import '../../models/incident.dart';
 import '../../models/vehicle.dart';
 import '../../repositories/incident_repository.dart';
 import '../../repositories/vehicle_repository.dart';
+import 'widgets/incident_ui.dart';
 
 class IncidentDetailScreen extends StatefulWidget {
   final int incidentId;
@@ -24,22 +26,39 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
   final _incidentRepo = IncidentRepository();
   final _vehicleRepo = VehicleRepository();
 
-  late Future<_IncidentDetailData> _future = _load();
+  IncidentView? _view;
+  Vehicle? _vehicle;
+  Object? _error;
+  bool _loading = true;
+  bool _busy = false;
   bool _didChange = false;
 
-  Future<_IncidentDetailData> _load() async {
-    final inc = await _incidentRepo.getById(widget.incidentId);
-    Vehicle? v;
-    if (inc != null) {
-      v = await _vehicleRepo.getById(inc.vehicleId);
-    }
-    return _IncidentDetailData(incident: inc, vehicle: v);
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  void _reload() {
-    setState(() {
-      _future = _load();
-    });
+  Future<void> _load() async {
+    try {
+      final view = await _incidentRepo.getViewById(widget.incidentId);
+      final v = view == null
+          ? null
+          : await _vehicleRepo.getById(view.incident.vehicleId);
+      if (!mounted) return;
+      setState(() {
+        _view = view;
+        _vehicle = v;
+        _error = view == null ? 'Incident introuvable' : null;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e;
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _edit(Incident inc) async {
@@ -54,38 +73,65 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
     );
     if (saved == true && mounted) {
       _didChange = true;
-      _reload();
+      _load();
     }
   }
 
   Future<void> _delete(Incident inc) async {
     final ok = await confirmDialog(
       context,
-      title: 'Supprimer incident',
-      message: 'Voulez-vous vraiment supprimer définitivement cet incident ?',
+      title: "Supprimer l'incident",
+      message:
+          'Voulez-vous vraiment supprimer définitivement cet incident et ses photos ?',
       confirmLabel: 'Supprimer',
     );
     if (ok != true || !mounted) return;
 
-    await _incidentRepo.delete(inc.id!);
+    setState(() => _busy = true);
+    try {
+      await _incidentRepo.delete(inc.id!);
+    } on AppException catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        showSnack(context, e.message);
+      }
+      return;
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        showSnack(context, 'Erreur lors de la suppression : $e');
+      }
+      return;
+    }
     if (!mounted) return;
-    showSnack(context, 'Incident supprimé');
+    showSnack(context, Strings.incidentDeleted);
     Navigator.pop(context, true);
   }
 
   Future<void> _changeStatus(Incident inc, IncidentStatus newStatus) async {
-    final ok = await confirmDialog(
-      context,
-      title: 'Changer le statut',
-      message: 'Passer cet incident à "${newStatus.label}" ?',
-    );
-    if (ok != true || !mounted) return;
-
-    await _incidentRepo.changeStatus(inc.id!, newStatus);
+    setState(() => _busy = true);
+    try {
+      await _incidentRepo.changeStatus(inc.id!, newStatus);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        showSnack(context, 'Erreur lors du changement de statut : $e');
+      }
+      return;
+    }
     if (!mounted) return;
-    showSnack(context, 'Statut mis à jour');
     _didChange = true;
-    _reload();
+    // Update in place so the timeline animates to the new step.
+    setState(() {
+      _busy = false;
+      _view = IncidentView(
+        incident: inc.copyWith(status: newStatus),
+        vehicleLabel: _view!.vehicleLabel,
+        reporterName: _view!.reporterName,
+        clientName: _view!.clientName,
+      );
+    });
+    showSnack(context, 'Statut : ${newStatus.label}');
   }
 
   void _openPhotoViewer(List<String> photos, int index) {
@@ -98,200 +144,383 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // System back (Android button / gesture) must also report changes so the
+    // list refreshes, not only the AppBar arrow.
     return PopScope(
-      canPop: true,
-      onPopInvokedWithResult: (didPop, _) {},
-      child: FutureBuilder<_IncidentDetailData>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return const Scaffold(body: LoadingView());
-          }
-          if (snap.hasError || snap.data?.incident == null) {
-            return Scaffold(
-              appBar: AppBar(title: const Text("Détail de l'incident")),
-              body: ErrorView(
-                error: snap.error ?? 'Incident introuvable',
-                onRetry: _reload,
-              ),
-            );
-          }
-          final data = snap.data!;
-          final inc = data.incident!;
-          final vehicle = data.vehicle;
-          final isAccident = inc.type == IncidentType.accident;
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Navigator.pop(context, _didChange);
+      },
+      child: _buildContent(context),
+    );
+  }
 
-          return Scaffold(
-            appBar: AppBar(
-              title: Text('${inc.type.label} #${inc.id}'),
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context, _didChange),
-              ),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.edit),
-                  onPressed: () => _edit(inc),
-                  tooltip: 'Modifier',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => _delete(inc),
-                  tooltip: 'Supprimer',
-                ),
-              ],
-            ),
-            body: ResponsiveCenter(
+  Widget _buildContent(BuildContext context) {
+    if (_loading) return const Scaffold(body: LoadingView());
+    if (_view == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Détail de l'incident")),
+        body: ErrorView(
+          error: _error ?? 'Incident introuvable',
+          onRetry: () {
+            setState(() => _loading = true);
+            _load();
+          },
+        ),
+      );
+    }
+
+    final view = _view!;
+    final inc = view.incident;
+    final scheme = Theme.of(context).colorScheme;
+    var section = 0;
+    Widget animated(Widget child) => EntranceAnimation(
+          delay: Duration(milliseconds: 120 + 70 * section++),
+          child: child,
+        );
+
+    return Scaffold(
+      backgroundColor: scheme.surfaceContainerLowest,
+      bottomNavigationBar: _buildActionBar(inc),
+      body: CustomScrollView(
+        slivers: [
+          _buildHeader(inc),
+          SliverToBoxAdapter(
+            child: ResponsiveCenter(
               maxWidth: 850,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                 child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SectionCard(
-                    title: 'Fiche incident',
-                    children: [
-                      Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    animated(IncidentSection(
+                      icon: Icons.timeline_rounded,
+                      title: 'Suivi de la prise en charge',
+                      child: IncidentStatusTimeline(status: inc.status),
+                    )),
+                    animated(IncidentSection(
+                      icon: Icons.info_outline_rounded,
+                      title: 'Informations',
+                      child: Column(
                         children: [
-                          Icon(
-                            isAccident
-                                ? Icons.car_crash_outlined
-                                : Icons.build_outlined,
-                            color: isAccident ? Colors.red : Colors.orange,
-                            size: 28,
+                          IncidentInfoTile(
+                            icon: Icons.event_rounded,
+                            label: "Date de l'incident",
+                            value: formatDate(inc.date),
+                            color: inc.type.color,
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            inc.type.label,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color:
-                                      isAccident ? Colors.red : Colors.orange,
-                                ),
+                          IncidentInfoTile(
+                            icon: Icons.place_rounded,
+                            label: 'Lieu',
+                            value: inc.place,
+                            color: inc.type.color,
                           ),
-                          const Spacer(),
-                          incidentStatusChip(inc.status),
+                          IncidentInfoTile(
+                            icon: Icons.badge_rounded,
+                            label: 'Déclaré par',
+                            value: view.reporterName ?? '—',
+                          ),
+                          IncidentInfoTile(
+                            icon: Icons.schedule_rounded,
+                            label: 'Enregistré le',
+                            value: formatDate(inc.createdAt),
+                          ),
                         ],
                       ),
-                      const Divider(height: 24),
-                      if (vehicle != null)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: CarImage(
-                              fileName: vehicle.photos.isNotEmpty
-                                  ? vehicle.photos.first
-                                  : null,
-                              width: 50,
-                              height: 50,
-                              fit: BoxFit.cover,
+                    )),
+                    animated(IncidentSection(
+                      icon: Icons.directions_car_rounded,
+                      title: 'Véhicule & location',
+                      child: Column(
+                        children: [
+                          _VehicleTile(
+                            vehicle: _vehicle,
+                            label: view.vehicleLabel,
+                            onTap: _vehicle == null
+                                ? null
+                                : () => Navigator.pushNamed(
+                                      context,
+                                      Routes.vehicleDetail,
+                                      arguments: IdArgs(_vehicle!.id!),
+                                    ),
+                          ),
+                          const Divider(height: 20),
+                          if (inc.rentalId != null)
+                            IncidentInfoTile(
+                              icon: Icons.assignment_rounded,
+                              label: 'Contrat de location #${inc.rentalId}',
+                              value: view.clientName != null
+                                  ? 'Locataire : ${view.clientName}'
+                                  : 'Location liée',
+                              color: Colors.indigo,
+                              onTap: () => Navigator.pushNamed(
+                                context,
+                                Routes.rentalDetail,
+                                arguments: IdArgs(inc.rentalId!),
+                              ),
+                            )
+                          else
+                            IncidentInfoTile(
+                              icon: Icons.link_off_rounded,
+                              label: 'Location liée',
+                              value: 'Aucune location active à cette date',
+                              color: scheme.outline,
                             ),
-                          ),
-                          title: Text(
-                            vehicle.label,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: const Text('Véhicule concerné'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => Navigator.pushNamed(
-                            context,
-                            Routes.vehicleDetail,
-                            arguments: IdArgs(vehicle.id!),
-                          ),
-                        ),
-                      if (inc.rentalId != null) ...[
-                        const Divider(),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const CircleAvatar(
-                              child: Icon(Icons.assignment_outlined)),
-                          title: Text('Contrat de location #${inc.rentalId}'),
-                          subtitle: const Text('Location liée'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => Navigator.pushNamed(
-                            context,
-                            Routes.rentalDetail,
-                            arguments: IdArgs(inc.rentalId!),
-                          ),
-                        ),
-                      ],
-                      const Divider(),
-                      LabeledRow(label: 'Date', value: formatDate(inc.date)),
-                      LabeledRow(label: 'Lieu', value: inc.place),
-                      LabeledRow(
-                        label: 'Enregistré le',
-                        value: formatDate(inc.createdAt),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Description :',
-                        style: Theme.of(context).textTheme.bodySmall,
+                    )),
+                    animated(IncidentSection(
+                      icon: Icons.notes_rounded,
+                      title: 'Description',
+                      child: Text(
+                        inc.description,
+                        style: const TextStyle(fontSize: 15, height: 1.45),
                       ),
-                      const SizedBox(height: 4),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(inc.description),
-                      ),
-                    ],
-                  ),
-                  if (inc.photos.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Photos (${inc.photos.length})',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    PhotoStrip(
-                      fileNames: inc.photos,
-                      onTap: (i) => _openPhotoViewer(inc.photos, i),
-                    ),
+                    )),
+                    animated(IncidentSection(
+                      icon: Icons.photo_library_rounded,
+                      title: 'Photos de constat',
+                      trailing: Text('${inc.photos.length}/5',
+                          style: TextStyle(color: scheme.onSurfaceVariant)),
+                      child: inc.photos.isEmpty
+                          ? Text('Aucune photo jointe.',
+                              style:
+                                  TextStyle(color: scheme.onSurfaceVariant))
+                          : _PhotoGrid(
+                              photos: inc.photos,
+                              onTap: (i) => _openPhotoViewer(inc.photos, i),
+                            ),
+                    )),
                   ],
-                  const SizedBox(height: 20),
-                  if (inc.status == IncidentStatus.enAttente)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.play_arrow),
-                        label: const Text('Prendre en charge'),
-                        onPressed: () =>
-                            _changeStatus(inc, IncidentStatus.enCours),
-                      ),
-                    ),
-                  if (inc.status == IncidentStatus.enCours)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.check_circle_outline),
-                        label: const Text('Marquer comme résolu'),
-                        onPressed: () =>
-                            _changeStatus(inc, IncidentStatus.resolu),
-                      ),
-                    ),
-                ],
+                ),
               ),
             ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+
+  SliverAppBar _buildHeader(Incident inc) => SliverAppBar(
+        pinned: true,
+        expandedHeight: 210,
+        backgroundColor: inc.type.color,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.pop(context, _didChange),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_rounded),
+            tooltip: 'Modifier',
+            onPressed: _busy ? null : () => _edit(inc),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline_rounded),
+            tooltip: 'Supprimer',
+            onPressed: _busy ? null : () => _delete(inc),
+          ),
+        ],
+        flexibleSpace: FlexibleSpaceBar(
+          titlePadding: const EdgeInsetsDirectional.only(start: 56, bottom: 14),
+          title: Text(
+            '${inc.type.label} #${inc.id}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          background: Container(
+            decoration: BoxDecoration(gradient: inc.type.gradient),
+            child: Stack(
+              children: [
+                // Large faded icon as decoration
+                Positioned(
+                  right: -20,
+                  bottom: -24,
+                  child: Icon(inc.type.icon,
+                      size: 180, color: Colors.white.withValues(alpha: 0.12)),
+                ),
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 56, 20, 56),
+                    child: Row(
+                      children: [
+                        Hero(
+                          tag: incidentHeroTag(inc.id!),
+                          child: IncidentTypeBadge(
+                              type: inc.type, size: 64, onDark: true),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 300),
+                                child: IncidentStatusPill(
+                                  key: ValueKey(inc.status),
+                                  status: inc.status,
+                                  onDark: true,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                inc.type.hint,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+  Widget _buildActionBar(Incident inc) {
+    final next = inc.status.next;
+    return SafeArea(
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        child: next == null
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: _busy
+                      ? null
+                      : () => _changeStatus(inc, IncidentStatus.enAttente),
+                  icon: const Icon(Icons.replay_rounded),
+                  label: const Text('Rouvrir l\'incident'),
+                ),
+              )
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (child, a) => FadeTransition(
+                    opacity: a,
+                    child: ScaleTransition(
+                        scale: Tween(begin: 0.9, end: 1.0).animate(a),
+                        child: child),
+                  ),
+                  child: FilledButton.icon(
+                    key: ValueKey(next),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: next.color,
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      textStyle: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                    onPressed: _busy ? null : () => _changeStatus(inc, next),
+                    icon: _busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : Icon(next.icon),
+                    label: Text(next == IncidentStatus.enCours
+                        ? 'Prendre en charge'
+                        : 'Marquer comme résolu'),
+                  ),
+                ),
+              ),
       ),
     );
   }
 }
 
-class _IncidentDetailData {
-  final Incident? incident;
+class _VehicleTile extends StatelessWidget {
   final Vehicle? vehicle;
-  _IncidentDetailData({required this.incident, required this.vehicle});
+  final String label;
+  final VoidCallback? onTap;
+  const _VehicleTile({required this.vehicle, required this.label, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: CarImage(
+              fileName: vehicle != null && vehicle!.photos.isNotEmpty
+                  ? vehicle!.photos.first
+                  : null,
+              width: 72,
+              height: 56,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Véhicule concerné',
+                    style: TextStyle(
+                        fontSize: 12, color: scheme.onSurfaceVariant)),
+                const SizedBox(height: 2),
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+          if (onTap != null)
+            Icon(Icons.chevron_right_rounded, color: scheme.outline),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoGrid extends StatelessWidget {
+  final List<String> photos;
+  final void Function(int index) onTap;
+  const _PhotoGrid({required this.photos, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: photos.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+        ),
+        itemBuilder: (context, i) => EntranceAnimation(
+          delay: EntranceAnimation.staggerDelay(i),
+          offsetY: 12,
+          child: Material(
+            borderRadius: BorderRadius.circular(14),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => onTap(i),
+              child: CarImage(fileName: photos[i]),
+            ),
+          ),
+        ),
+      );
 }
