@@ -206,8 +206,8 @@ void main() {
       await db.setVersion(1);
       await DatabaseHelper.instance.close();
 
-      db = await DatabaseHelper.instance.database; // runs onUpgrade 1 → 2
-      expect(await db.getVersion(), 2);
+      db = await DatabaseHelper.instance.database; // runs onUpgrade 1 → 3
+      expect(await db.getVersion(), 3);
       // One "declared" entry per existing incident, in its current status.
       final rows = await db.rawQuery('''
         SELECT h.from_statut, h.to_statut = i.statut AS same
@@ -219,6 +219,100 @@ void main() {
         rows.every((r) => r['from_statut'] == null && r['same'] == 1),
         isTrue,
       );
+    });
+  });
+
+  group('map position', () {
+    test('is saved, read back and can be removed', () async {
+      final id = await repo.insert(
+        Incident(
+          vehicleId: 1,
+          reportedByUserId: 2,
+          type: IncidentType.panne,
+          date: DateTime(2026, 11, 1),
+          place: 'Lac 2',
+          description: 'Batterie à plat au démarrage',
+          status: IncidentStatus.enAttente,
+          createdAt: DateTime(2026, 11, 1, 9),
+          latitude: 36.8475,
+          longitude: 10.27,
+        ),
+      );
+      var inc = (await repo.getById(id))!;
+      expect(inc.hasPosition, isTrue);
+      expect(inc.latitude, closeTo(36.8475, 1e-9));
+      expect(inc.longitude, closeTo(10.27, 1e-9));
+
+      // The view used by the list and detail carries it too.
+      expect((await repo.getViewById(id))!.incident.hasPosition, isTrue);
+
+      // Removing the position in the form clears both columns.
+      await repo.update(
+        Incident(
+          id: id,
+          vehicleId: inc.vehicleId,
+          reportedByUserId: inc.reportedByUserId,
+          type: inc.type,
+          date: inc.date,
+          place: inc.place,
+          description: inc.description,
+          status: inc.status,
+          createdAt: inc.createdAt,
+        ),
+      );
+      inc = (await repo.getById(id))!;
+      expect(inc.hasPosition, isFalse);
+    });
+
+    test('update clears a rental link that no longer applies', () async {
+      final id = await repo.insert(newIncident(vehicleId: 4, rentalId: 2));
+      final inc = (await repo.getById(id))!;
+      await repo.update(
+        Incident(
+          id: id,
+          vehicleId: 1,
+          reportedByUserId: inc.reportedByUserId,
+          type: inc.type,
+          date: inc.date,
+          place: inc.place,
+          description: inc.description,
+          status: inc.status,
+          createdAt: inc.createdAt,
+        ),
+      );
+      expect((await repo.getById(id))!.rentalId, isNull);
+    });
+
+    test('demo incidents all have a position', () async {
+      final views = await repo.getViews();
+      expect(views.every((v) => v.incident.hasPosition), isTrue);
+    });
+
+    test('upgrading a v2 database adds the position columns', () async {
+      var db = await DatabaseHelper.instance.database;
+      // Rebuild "incidents" without the v3 columns, as a v2 database had it.
+      await db.execute('PRAGMA foreign_keys = OFF');
+      await db.execute(
+        'CREATE TABLE incidents_v2 AS SELECT id, vehicle_id, rental_id, '
+        'reported_by_user_id, type, date, lieu, description, statut, '
+        'created_at FROM incidents',
+      );
+      await db.execute('DROP TABLE incidents');
+      await db.execute('ALTER TABLE incidents_v2 RENAME TO incidents');
+      await db.setVersion(2);
+      await DatabaseHelper.instance.close();
+
+      db = await DatabaseHelper.instance.database; // runs onUpgrade 2 → 3
+      expect(await db.getVersion(), 3);
+      final cols = {
+        for (final r in await db.rawQuery('PRAGMA table_info(incidents)'))
+          r['name'],
+      };
+      expect(cols, containsAll(['latitude', 'longitude']));
+      // Existing rows are kept, without a position.
+      final rows = await db.query('incidents');
+      expect(rows, hasLength(7));
+      expect(rows.every((r) => r['latitude'] == null), isTrue);
     });
   });
 
