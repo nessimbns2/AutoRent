@@ -146,7 +146,7 @@ Les dates sont calculées par rapport au jour d'installation pour que l'accueil 
 
 ---
 
-## 🚗 Module Véhicules (base v8)
+## 🚗 Module Véhicules (base v8 et v9)
 
 **CRUD complet**
 - **Fiche technique** : catégorie (citadine, compacte, berline, SUV, utilitaire, luxe), carburant, boîte de vitesses, places, année, couleur, kilométrage — affichée sur les cartes de la flotte (« SUV · Hybride · Auto · 5 pl. »).
@@ -167,13 +167,21 @@ Les dates sont calculées par rapport au jour d'installation pour que l'accueil 
 - **Export CSV de la flotte** (Flotte ➔ ⤓) : une ligne par véhicule, ouvrable dans Excel (séparateur `;`, virgule décimale, UTF-8 avec BOM).
 - Les fichiers sont enregistrés dans **Téléchargements** sur ordinateur (bouton « Ouvrir ») ou dans le dossier de l'application sur téléphone (le PDF peut aussi être partagé).
 
+**Grille tarifaire** (base v9, `pricing_settings` — *Profil ➔ Grille tarifaire* ou Flotte ➔ 🏷)
+- **Remises longue durée** : −10 % dès 7 jours, −25 % dès 30 jours (seul le palier le plus élevé atteint s'applique).
+- **Haute saison** : +20 % pour chaque jour loué entre le 1er juillet et le 31 août (période modifiable, elle peut chevaucher le nouvel an).
+- **Tarif week-end** : +10 % pour chaque samedi et dimanche (une valeur négative en fait une remise week-end).
+- Calcul jour par jour : les majorations saison et week-end s'ajoutent sur le tarif de base, puis la remise longue durée s'applique au sous-total ; montant arrondi au millime.
+- Le formulaire de location affiche le **détail du prix** (tarif de base, majorations, remise, total, prix moyen par jour) ; un **simulateur** permet de tester la grille avant de l'enregistrer.
+- Les contrats existants gardent leur montant : modifier une location sans changer de véhicule ni de dates ne recalcule pas le prix. Prolongations et frais de retard utilisent le tarif journalier moyen du contrat.
+
 ---
 
 ## 🗄️ Base de données SQLite
 
 - Fichier `autorent.db` créé automatiquement au premier lancement (`sqflite`, et `sqflite_common_ffi` sur Windows / Linux / macOS).
-- Tables reliées par clés étrangères (`users`, `clients`, `vehicles`, `vehicle_photos`, `vehicle_documents`, `maintenances`, `rentals`, `incidents`, `incident_photos`…) — voir [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-- Version actuelle du schéma : **8** (`DatabaseHelper.schemaVersion`) ; chaque migration est appliquée automatiquement à l'ouverture.
+- Tables reliées par clés étrangères (`users`, `clients`, `vehicles`, `vehicle_photos`, `vehicle_documents`, `pricing_settings`, `maintenances`, `rentals`, `incidents`, `incident_photos`…) — voir [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- Version actuelle du schéma : **9** (`DatabaseHelper.schemaVersion`) ; chaque migration est appliquée automatiquement à l'ouverture.
 - Jeu de données de démonstration inséré à la création.
 - *Profil ➔ Base de données SQLite* affiche le nombre d'enregistrements par table et l'emplacement du fichier.
 

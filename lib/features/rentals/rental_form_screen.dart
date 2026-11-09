@@ -1,23 +1,25 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../core/constants/strings.dart';
+import '../../core/services/pricing_service.dart';
 import '../../core/session/session_manager.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ui_helpers.dart';
+import '../../core/widgets/price_breakdown.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../core/widgets/status_chips.dart';
 import '../../models/client.dart';
 import '../../models/enums.dart';
+import '../../models/pricing_settings.dart';
 import '../../models/rental.dart';
 import '../../models/vehicle.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/maintenance_repository.dart';
+import '../../repositories/pricing_repository.dart';
 import '../../repositories/rental_repository.dart';
 import '../../repositories/vehicle_document_repository.dart';
 import '../../repositories/vehicle_repository.dart';
@@ -59,22 +61,44 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
 
   List<Client> _clients = [];
   List<Vehicle> _availableVehicles = [];
+  PricingSettings _pricing = PricingSettings.defaults;
   Rental? _existing;
   bool _loading = true;
   bool _saving = false;
 
   bool get _isEdit => widget.rentalId != null;
 
-  int get _days => max(1, _endDate.difference(_startDate).inDays);
+  int get _days => PricingService.rentalDays(_startDate, _endDate);
 
   Vehicle? get _currentVehicle => _selectedVehicleId == null
       ? null
       : _availableVehicles.where((v) => v.id == _selectedVehicleId).firstOrNull;
 
-  double get _totalPrice {
+  /// Price of the selected car and dates with the agency pricing grid
+  /// (long-stay discount, high season, weekend).
+  PriceQuote? get _quote {
     final v = _currentVehicle;
-    if (v == null) return _existing?.totalPrice ?? 0.0;
-    return _days * v.pricePerDay;
+    if (v == null) return null;
+    return PricingService.quote(
+        dailyRate: v.pricePerDay,
+        start: _startDate,
+        end: _endDate,
+        settings: _pricing);
+  }
+
+  /// Editing a contract without changing its car or dates keeps the agreed
+  /// amount, even if the vehicle price or the pricing grid changed since.
+  bool get _keepsContractPrice {
+    final e = _existing;
+    return e != null &&
+        e.vehicleId == _selectedVehicleId &&
+        DateUtils.isSameDay(e.startDate, _startDate) &&
+        DateUtils.isSameDay(e.endDate, _endDate);
+  }
+
+  double get _totalPrice {
+    if (_keepsContractPrice) return _existing!.totalPrice;
+    return _quote?.total ?? _existing?.totalPrice ?? 0.0;
   }
 
   @override
@@ -86,6 +110,7 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
   }
 
   Future<void> _load() async {
+    _pricing = await PricingRepository().get();
     _clients = await _clientRepo.getAll();
     final currentUser = SessionManager.instance.currentUser;
     if (!_isEdit && currentUser != null) {
@@ -373,7 +398,31 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
               ],
             ),
 
-            // 4. Status (edit only) -----------------------------------------
+            // 4. Price: pricing grid breakdown ------------------------------
+            if (_currentVehicle != null && _datesChosen)
+              FormSection(
+                title: '4 · Prix',
+                icon: Icons.sell_rounded,
+                color: AppColors.success,
+                children: [
+                  if (_keepsContractPrice)
+                    InfoBanner(
+                      icon: Icons.lock_outline_rounded,
+                      color: AppColors.success,
+                      text:
+                          'Montant du contrat conservé : ${formatMoney(_existing!.totalPrice)}. '
+                          'Changez de véhicule ou de dates pour le recalculer avec la grille tarifaire.',
+                    )
+                  else ...[
+                    PriceBreakdown(quote: _quote!),
+                    if (!_pricing.anyEnabled)
+                      Text('Grille tarifaire désactivée : prix = jours × tarif journalier.',
+                          style: context.text.bodySmall),
+                  ],
+                ],
+              ),
+
+            // 5. Status (edit only) -----------------------------------------
             if (_isEdit)
               FormSection(
                 title: 'Statut',
@@ -407,7 +456,9 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
               Text(
                   _currentVehicle == null
                       ? 'Total estimé'
-                      : '$_days j × ${_currentVehicle!.pricePerDay.toStringAsFixed(0)} DT',
+                      : _keepsContractPrice
+                          ? '$_days j · montant du contrat'
+                          : _quote!.summary,
                   style: context.text.bodySmall),
               Text(formatMoneyShort(_totalPrice),
                   style: context.text.titleLarge

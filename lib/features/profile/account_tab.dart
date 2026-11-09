@@ -219,6 +219,13 @@ class _AccountTabState extends State<AccountTab> {
                   subtitle: "Comptes des agents de l'agence",
                   onTap: () => _open(Routes.users),
                 ),
+                _MenuTile(
+                  icon: Icons.sell_rounded,
+                  color: AppColors.success,
+                  title: 'Grille tarifaire',
+                  subtitle: 'Longue durée, haute saison, week-end',
+                  onTap: () => _open(Routes.pricing),
+                ),
               ]),
               _group(context, 'Données', [
                 _MenuTile(

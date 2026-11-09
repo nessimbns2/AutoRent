@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'demo_data.dart';
 import 'incident_schema.dart';
+import 'pricing_schema.dart';
 import 'vehicle_schema.dart';
 
 class DatabaseHelper {
@@ -19,7 +20,9 @@ class DatabaseHelper {
   /// v7: user module — recovery key, login lockout, 2FA (TOTP), activity log.
   /// v8: vehicle module — technical sheet, archiving and administrative
   ///     documents with expiry dates (see VehicleSchema).
-  static const _dbVersion = 8;
+  /// v9: pricing grid — long-stay discounts, high season, weekend rate
+  ///     (see PricingSchema).
+  static const _dbVersion = 9;
 
   /// Current schema version (used by tests instead of a hard-coded number).
   static const schemaVersion = _dbVersion;
@@ -48,6 +51,7 @@ class DatabaseHelper {
     await DemoData.seedAccounts(db);
     await DemoData.seedFleet(db);
     await VehicleSchema.seedDemoDetails(db);
+    await PricingSchema.migrate(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldV, int newV) async {
@@ -119,6 +123,10 @@ class DatabaseHelper {
     if (oldV < 8) {
       await VehicleSchema.migrate(db);
       await VehicleSchema.seedDemoDetails(db);
+    }
+    // v9 (pricing grid): single settings row with the agency defaults.
+    if (oldV < 9) {
+      await PricingSchema.migrate(db);
     }
   }
 

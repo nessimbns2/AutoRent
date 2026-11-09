@@ -30,6 +30,7 @@ class Routes {
   static const vehicleForm = '/vehicles/form';
   static const maintenanceHistory = '/vehicles/maintenance-history';
   static const availability = '/vehicles/availability';
+  static const pricing = '/vehicles/pricing';
 
   // maintenances
   static const maintenanceDetail = '/maintenances/detail';

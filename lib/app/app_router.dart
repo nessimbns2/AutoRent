@@ -29,6 +29,7 @@ import '../features/users/user_list_screen.dart';
 import '../features/vehicles/vehicle_detail_screen.dart';
 import '../features/vehicles/vehicle_form_screen.dart';
 import '../features/vehicles/availability_screen.dart';
+import '../features/vehicles/pricing_screen.dart';
 import 'route_args.dart';
 import 'routes.dart';
 
@@ -119,6 +120,8 @@ class AppRouter {
             : _bad(s);
       case Routes.maintenanceStats:
         return _page(const MaintenanceStatsScreen(), s);
+      case Routes.pricing:
+        return _page(const PricingScreen(), s);
       case Routes.availability:
         return args is IdArgs
             ? _page(AvailabilityScreen(vehicleId: args.id), s)

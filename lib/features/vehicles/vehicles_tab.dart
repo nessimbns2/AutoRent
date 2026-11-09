@@ -190,6 +190,12 @@ class _VehiclesTabState extends State<VehiclesTab> {
                       : '$active véhicule(s) · ${counts[VehicleAvailability.disponible] ?? 0} disponible(s)',
                   actions: [
                     CircleIconButton(
+                      icon: Icons.sell_outlined,
+                      tooltip: 'Grille tarifaire',
+                      onPressed: () =>
+                          Navigator.pushNamed(context, Routes.pricing),
+                    ),
+                    CircleIconButton(
                       icon: Icons.file_download_outlined,
                       tooltip: 'Exporter la flotte (CSV)',
                       onPressed: () => exportFleetCsv(context),

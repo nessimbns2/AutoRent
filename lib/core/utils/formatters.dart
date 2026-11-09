@@ -35,6 +35,12 @@ String formatLongDay(DateTime d) =>
 /// Short month label for charts, e.g. "nov."
 String monthLabel(int month) => _months[month - 1];
 
+/// Full month name, e.g. "juillet".
+String monthLongLabel(int month) => _monthsLong[month - 1];
+
+/// Day and month without a year, e.g. "1 juillet".
+String formatMonthDay(int month, int day) => '$day ${_monthsLong[month - 1]}';
+
 /// Formats a TND amount: e.g. 1,120.000 DT
 String formatMoney(double v) => '${_moneyFormatter.format(v)} DT';
 
