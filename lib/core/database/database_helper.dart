@@ -2,6 +2,7 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'demo_data.dart';
+import 'incident_schema.dart';
 
 class DatabaseHelper {
   DatabaseHelper._();
@@ -12,7 +13,9 @@ class DatabaseHelper {
   /// v1: initial schema + demo data
   /// v2: new demo fleet (6 photographed cars) with rentals, maintenance and
   ///     incidents — replaces the previous vehicles and rentals.
-  static const _dbVersion = 2;
+  /// v4: incident status history + incident map position (see
+  ///     IncidentSchema). v3 was only used on the incident branch.
+  static const _dbVersion = 4;
 
   Database? _db;
 
@@ -33,18 +36,30 @@ class DatabaseHelper {
     for (final stmt in _schemaStatements) {
       await db.execute(stmt);
     }
+    await IncidentSchema.createHistory(db);
+    await IncidentSchema.addCoordinates(db);
     await DemoData.seedAccounts(db);
     await DemoData.seedFleet(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldV, int newV) async {
-    if (oldV < 2) {
+    // A v2/v3 database from the incident branch already has the history table
+    // but still the old demo fleet: it gets the new fleet too.
+    final oldFleet = oldV < 2 ||
+        (oldV < 4 && await IncidentSchema.hasHistoryTable(db));
+    if (oldV < 4) {
+      await IncidentSchema.createHistory(db);
+      await IncidentSchema.addCoordinates(db);
+    }
+    if (oldFleet) {
       // Replace every vehicle, rental, maintenance and incident by the new
       // demo fleet. Users and clients are kept (missing demo clients added).
       await DemoData.resetFleet(db);
       await DemoData.seedAccounts(db);
       await DemoData.seedFleet(db);
     }
+    // Incidents typed on main before v4 get a "declared" history entry.
+    await IncidentSchema.backfillHistory(db);
   }
 
   Future<void> close() async {

@@ -13,6 +13,12 @@ class Incident {
   final DateTime createdAt;
   final List<String> photos;
 
+  /// Optional position picked on the map (both null when not set).
+  final double? latitude;
+  final double? longitude;
+
+  bool get hasPosition => latitude != null && longitude != null;
+
   const Incident({
     this.id,
     required this.vehicleId,
@@ -25,36 +31,45 @@ class Incident {
     required this.status,
     required this.createdAt,
     this.photos = const [],
+    this.latitude,
+    this.longitude,
   });
 
-  factory Incident.fromMap(Map<String, Object?> m,
-          {List<String> photos = const []}) =>
-      Incident(
-        id: m['id'] as int?,
-        vehicleId: m['vehicle_id'] as int,
-        rentalId: m['rental_id'] as int?,
-        reportedByUserId: m['reported_by_user_id'] as int?,
-        type: IncidentType.fromValue(m['type'] as String),
-        date: DateTime.parse(m['date'] as String),
-        place: m['lieu'] as String,
-        description: m['description'] as String,
-        status: IncidentStatus.fromValue(m['statut'] as String),
-        createdAt: DateTime.parse(m['created_at'] as String),
-        photos: photos,
-      );
+  factory Incident.fromMap(
+    Map<String, Object?> m, {
+    List<String> photos = const [],
+  }) => Incident(
+    id: m['id'] as int?,
+    vehicleId: m['vehicle_id'] as int,
+    rentalId: m['rental_id'] as int?,
+    reportedByUserId: m['reported_by_user_id'] as int?,
+    type: IncidentType.fromValue(m['type'] as String),
+    date: DateTime.parse(m['date'] as String),
+    place: m['lieu'] as String,
+    description: m['description'] as String,
+    status: IncidentStatus.fromValue(m['statut'] as String),
+    createdAt: DateTime.parse(m['created_at'] as String),
+    photos: photos,
+    latitude: (m['latitude'] as num?)?.toDouble(),
+    longitude: (m['longitude'] as num?)?.toDouble(),
+  );
 
+  /// Nullable columns are always written so an update can clear them
+  /// (unlinking a rental, removing the map position).
   Map<String, Object?> toMap() => {
-        if (id != null) 'id': id,
-        'vehicle_id': vehicleId,
-        if (rentalId != null) 'rental_id': rentalId,
-        if (reportedByUserId != null) 'reported_by_user_id': reportedByUserId,
-        'type': type.value,
-        'date': date.toIso8601String().substring(0, 10),
-        'lieu': place,
-        'description': description,
-        'statut': status.value,
-        'created_at': createdAt.toIso8601String(),
-      };
+    if (id != null) 'id': id,
+    'vehicle_id': vehicleId,
+    'rental_id': rentalId,
+    'latitude': latitude,
+    'longitude': longitude,
+    if (reportedByUserId != null) 'reported_by_user_id': reportedByUserId,
+    'type': type.value,
+    'date': date.toIso8601String().substring(0, 10),
+    'lieu': place,
+    'description': description,
+    'statut': status.value,
+    'created_at': createdAt.toIso8601String(),
+  };
 
   Incident copyWith({
     int? id,
@@ -68,29 +83,37 @@ class Incident {
     IncidentStatus? status,
     DateTime? createdAt,
     List<String>? photos,
-  }) =>
-      Incident(
-        id: id ?? this.id,
-        vehicleId: vehicleId ?? this.vehicleId,
-        rentalId: rentalId ?? this.rentalId,
-        reportedByUserId: reportedByUserId ?? this.reportedByUserId,
-        type: type ?? this.type,
-        date: date ?? this.date,
-        place: place ?? this.place,
-        description: description ?? this.description,
-        status: status ?? this.status,
-        createdAt: createdAt ?? this.createdAt,
-        photos: photos ?? this.photos,
-      );
+  }) => Incident(
+    id: id ?? this.id,
+    vehicleId: vehicleId ?? this.vehicleId,
+    rentalId: rentalId ?? this.rentalId,
+    reportedByUserId: reportedByUserId ?? this.reportedByUserId,
+    type: type ?? this.type,
+    date: date ?? this.date,
+    place: place ?? this.place,
+    description: description ?? this.description,
+    status: status ?? this.status,
+    createdAt: createdAt ?? this.createdAt,
+    photos: photos ?? this.photos,
+    latitude: latitude,
+    longitude: longitude,
+  );
 }
 
 class IncidentView {
   final Incident incident;
   final String vehicleLabel;
+
+  /// Name of the user who declared the incident (null if the account was deleted).
   final String? reporterName;
+
+  /// Name of the renter of the linked rental (null when no rental is linked).
+  final String? clientName;
+
   const IncidentView({
     required this.incident,
     required this.vehicleLabel,
     this.reporterName,
+    this.clientName,
   });
 }

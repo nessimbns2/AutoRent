@@ -74,6 +74,7 @@ class DemoData {
   /// Users and clients are kept.
   static Future<void> resetFleet(DatabaseExecutor db) async {
     const tables = [
+      'incident_history',
       'incident_photos',
       'incidents',
       'rentals',
@@ -190,36 +191,151 @@ class DemoData {
       });
     }
 
-    // Incidents: (véhicule, location liée, déclarant, type, date, lieu, description, statut)
-    final incidents = <(String, int?, int, String, int, String, String, String)>[
-      ('skoda_fabia', rentalOf(4), agent, 'panne', -1, 'Route de La Marsa',
-          'Voyant moteur allumé et perte de puissance en côte.', 'en_attente'),
-      ('dacia_logan', rentalOf(8), agent, 'panne', 0,
-          'Autoroute A1, sortie Hammamet',
-          'Crevaison du pneu avant droit, roue de secours montée par le client.',
-          'en_attente'),
-      ('audi_q3', rentalOf(17), admin, 'accident', -2, 'Parking Tunisia Mall',
-          'Rayure profonde sur la portière arrière gauche, constat amiable signé.',
-          'en_cours'),
-      ('renault_clio', null, agent, 'panne', -3, 'Agence AutoRent, Tunis',
-          'Bruit de frottement au freinage signalé lors du contrôle de retour.',
-          'resolu'),
-      ('suzuki_swift', rentalOf(0), admin, 'accident', -38, 'Sousse centre',
-          "Rétroviseur droit cassé lors d'un stationnement.", 'resolu'),
-    ];
-    for (final (car, rental, user, type, offset, lieu, desc, statut)
-        in incidents) {
-      await db.insert('incidents', {
+    // Incidents with their status history (who changed what, and when) and
+    // the place picked on the map, so the follow-up dashboard has data.
+    DateTime at(int daysAgo, int hour, int minute) {
+      final d = day(-daysAgo);
+      return DateTime(d.year, d.month, d.day, hour, minute);
+    }
+
+    Future<void> incident({
+      required String car,
+      int? rental,
+      required int reportedBy,
+      required String type,
+      required int daysAgo,
+      required String lieu,
+      required (double, double) position,
+      required String description,
+      required List<(String, int, DateTime)> history, // (statut, user, when)
+    }) async {
+      final id = await db.insert('incidents', {
         'vehicle_id': v[car],
         'rental_id': rental,
-        'reported_by_user_id': user,
+        'reported_by_user_id': reportedBy,
         'type': type,
-        'date': _iso(day(offset)),
+        'date': _iso(day(-daysAgo)),
         'lieu': lieu,
-        'description': desc,
-        'statut': statut,
-        'created_at': day(offset).toIso8601String(),
+        'latitude': position.$1,
+        'longitude': position.$2,
+        'description': description,
+        'statut': history.last.$1,
+        'created_at': history.first.$3.toIso8601String(),
       });
+      String? from;
+      for (final (statut, user, changedAt) in history) {
+        await db.insert('incident_history', {
+          'incident_id': id,
+          'from_statut': from,
+          'to_statut': statut,
+          'changed_by_user_id': user,
+          'changed_at': changedAt.toIso8601String(),
+        });
+        from = statut;
+      }
     }
+
+    await incident(
+      car: 'skoda_fabia',
+      rental: rentalOf(4),
+      reportedBy: agent,
+      type: 'panne',
+      daysAgo: 1,
+      lieu: 'Route de La Marsa',
+      position: (36.8650, 10.3050),
+      description: 'Voyant moteur allumé et perte de puissance en côte.',
+      history: [('en_attente', agent, at(1, 18, 5))],
+    );
+    await incident(
+      car: 'dacia_logan',
+      rental: rentalOf(8),
+      reportedBy: agent,
+      type: 'panne',
+      daysAgo: 2,
+      lieu: 'Autoroute A1, sortie Hammamet',
+      position: (36.4220, 10.5650),
+      description:
+          'Crevaison du pneu avant droit, roue de secours montée par le client.',
+      history: [
+        ('en_attente', agent, at(2, 7, 45)),
+        ('en_cours', admin, at(2, 9, 15)),
+      ],
+    );
+    await incident(
+      car: 'audi_q3',
+      rental: rentalOf(17),
+      reportedBy: admin,
+      type: 'accident',
+      daysAgo: 2,
+      lieu: 'Parking Tunisia Mall, Lac 2',
+      position: (36.8430, 10.2770),
+      description:
+          'Rayure profonde sur la portière arrière gauche, constat amiable signé.',
+      history: [
+        ('en_attente', admin, at(2, 16, 20)),
+        ('en_cours', agent, at(1, 9, 0)),
+      ],
+    );
+    await incident(
+      car: 'renault_clio',
+      reportedBy: agent,
+      type: 'panne',
+      daysAgo: 3,
+      lieu: 'Agence AutoRent, Tunis',
+      position: (36.7992, 10.1802),
+      description:
+          'Bruit de frottement au freinage signalé lors du contrôle de retour.',
+      history: [
+        ('en_attente', agent, at(3, 10, 15)),
+        ('en_cours', admin, at(3, 11, 30)),
+        ('resolu', admin, at(1, 15, 0)),
+      ],
+    );
+    await incident(
+      car: 'peugeot_208',
+      rental: rentalOf(10),
+      reportedBy: agent,
+      type: 'accident',
+      daysAgo: 17,
+      lieu: 'Avenue Habib Bourguiba, Tunis',
+      position: (36.7999, 10.1860),
+      description: 'Choc arrière à un feu rouge. Feu arrière gauche cassé, '
+          'constat amiable rempli.',
+      history: [
+        ('en_attente', agent, at(17, 17, 20)),
+        ('en_cours', admin, at(16, 9, 0)),
+        ('resolu', admin, at(12, 16, 45)),
+      ],
+    );
+    await incident(
+      car: 'suzuki_swift',
+      rental: rentalOf(1),
+      reportedBy: agent,
+      type: 'panne',
+      daysAgo: 11,
+      lieu: 'Parking Lac 2, Tunis',
+      position: (36.8475, 10.2700),
+      description:
+          'Le véhicule ne démarre plus, batterie à plat. Dépanneuse appelée.',
+      history: [
+        ('en_attente', agent, at(11, 9, 10)),
+        ('en_cours', admin, at(11, 11, 30)),
+      ],
+    );
+    await incident(
+      car: 'suzuki_swift',
+      rental: rentalOf(0),
+      reportedBy: admin,
+      type: 'accident',
+      daysAgo: 38,
+      lieu: 'Sousse centre',
+      position: (35.8256, 10.6370),
+      description: "Rétroviseur droit cassé lors d'un stationnement.",
+      history: [
+        ('en_attente', admin, at(38, 17, 20)),
+        ('en_cours', admin, at(37, 9, 0)),
+        ('resolu', agent, at(33, 16, 45)),
+      ],
+    );
   }
 }
