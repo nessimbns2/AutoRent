@@ -24,8 +24,8 @@ Future<void> main() async {
     statusBarColor: Colors.transparent,
   ));
 
-  await DatabaseHelper.instance.database; // open SQLite + create schema + seed
-  await ImageStorage.init(); //              cache documents dir path
+  await ImageStorage.init(); //              photos folder (needed by the demo data)
+  await DatabaseHelper.instance.database; // open SQLite + create/upgrade + seed
   await ThemeController.instance.init(); //  light / dark preference
   await SessionManager.instance.init(); //   restore logged-in user
   runApp(const AutoRentApp());

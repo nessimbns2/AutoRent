@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:autorent/app/theme.dart';
+import 'package:autorent/core/constants/business_rules.dart';
 import 'package:autorent/core/utils/formatters.dart';
 import 'package:autorent/core/widgets/shared_widgets.dart';
 import 'package:autorent/core/widgets/status_chips.dart';
@@ -85,6 +86,36 @@ void main() {
           isRentalOverdue(rental(RentalStatus.enCours,
               DateTime.now().add(const Duration(days: 2)))),
           isFalse);
+    });
+
+    test('late fee: contract daily rate + 20 % per late day', () {
+      final today = DateTime(2026, 11, 9);
+      final r = Rental(
+        clientId: 1,
+        vehicleId: 1,
+        startDate: DateTime(2026, 11, 1),
+        endDate: DateTime(2026, 11, 8), // 7 days × 70 = 490
+        totalPrice: 490,
+        status: RentalStatus.enCours,
+        createdAt: today,
+      );
+      expect(BusinessRules.dailyRate(r), 70);
+      expect(BusinessRules.lateDays(r.endDate, today), 1);
+      expect(BusinessRules.lateFee(r, today), closeTo(84, 0.001));
+      expect(BusinessRules.lateDays(r.endDate, DateTime(2026, 11, 8)), 0);
+    });
+
+    test('extension keeps the contract daily rate', () {
+      final r = Rental(
+        clientId: 1,
+        vehicleId: 1,
+        startDate: DateTime(2026, 11, 5),
+        endDate: DateTime(2026, 11, 9), // 4 days × 220
+        totalPrice: 880,
+        status: RentalStatus.enCours,
+        createdAt: DateTime(2026, 11, 1),
+      );
+      expect(BusinessRules.extendedTotal(r, DateTime(2026, 11, 12)), 1540);
     });
 
     test('French date helpers', () {

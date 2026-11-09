@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
 import '../../app/theme.dart';
+import '../../core/constants/business_rules.dart';
+import '../../core/utils/app_exception.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/widgets/shared_widgets.dart';
@@ -10,6 +12,7 @@ import '../../core/widgets/status_chips.dart';
 import '../../models/enums.dart';
 import '../../models/rental.dart';
 import '../../models/vehicle.dart';
+import '../../repositories/maintenance_repository.dart';
 import '../../repositories/rental_repository.dart';
 import '../../repositories/vehicle_repository.dart';
 import 'widgets/rental_tile.dart';
@@ -57,6 +60,138 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
     if (!mounted) return;
     showSnack(context, 'Location supprimée');
     Navigator.pop(context, true);
+  }
+
+  /// Hands the keys over — refused while the vehicle is in the workshop.
+  Future<void> _start(Rental r) async {
+    if (await MaintenanceRepository().hasActiveMaintenance(r.vehicleId)) {
+      if (mounted) {
+        showSnack(context,
+            'Impossible : ce véhicule est en entretien. Terminez l\'entretien ou changez de véhicule.',
+            kind: SnackKind.error);
+      }
+      return;
+    }
+    if (!mounted) return;
+    await _changeStatus(r, RentalStatus.enCours, 'Démarrer la location ?');
+  }
+
+  /// Vehicle return with automatic late-fee billing.
+  Future<void> _return(Rental r) async {
+    final lateDays = BusinessRules.lateDays(r.endDate);
+    if (lateDays == 0) {
+      final early = DateUtils.dateOnly(DateTime.now())
+          .isBefore(DateUtils.dateOnly(r.endDate));
+      final ok = await confirmDialog(
+        context,
+        title: 'Retour du véhicule',
+        message: early
+            ? 'Retour anticipé : le montant du contrat (${formatMoney(r.totalPrice)}) reste inchangé.'
+            : 'Le contrat sera clôturé pour ${formatMoney(r.totalPrice)}.',
+        confirmLabel: 'Clôturer',
+        icon: Icons.assignment_turned_in_rounded,
+        destructive: false,
+      );
+      if (ok != true) return;
+    } else {
+      final ok = await _confirmLateReturn(r, lateDays);
+      if (ok != true) return;
+    }
+    await _repo.completeReturn(r);
+    if (!mounted) return;
+    showSnack(context, 'Location terminée et enregistrée', kind: SnackKind.success);
+    _didChange = true;
+    _reload();
+  }
+
+  Future<bool?> _confirmLateReturn(Rental r, int lateDays) {
+    final rate = BusinessRules.dailyRate(r);
+    final fee = BusinessRules.lateFee(r);
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        icon: const IconBadge(
+            icon: Icons.schedule_rounded, color: AppColors.danger, size: 56),
+        title: const Text('Retour en retard', textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Retour prévu le ${formatShortDate(r.endDate)} : $lateDays jour(s) de retard. '
+              'Les jours de retard sont facturés au tarif journalier majoré de '
+              '${((BusinessRules.lateFeeMultiplier - 1) * 100).round()} %.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 14),
+            LabeledRow(label: 'Montant du contrat', value: formatMoney(r.totalPrice)),
+            LabeledRow(
+                label: '$lateDays j × ${formatMoneyShort(rate)} × ${BusinessRules.lateFeeMultiplier}',
+                value: '+ ${formatMoney(fee)}'),
+            const Divider(height: 16),
+            LabeledRow(
+                label: 'Total à facturer',
+                value: formatMoney(r.totalPrice + fee),
+                emphasize: true),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        actions: [
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                onPressed: () => Navigator.pop(dialogCtx, false),
+                child: const Text('Annuler'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+                onPressed: () => Navigator.pop(dialogCtx, true),
+                child: const Text('Facturer'),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  /// Extends the contract at the same daily rate.
+  Future<void> _extend(Rental r) async {
+    final first = r.endDate.add(const Duration(days: 1));
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: first,
+      firstDate: first,
+      lastDate: r.endDate.add(const Duration(days: 365)),
+      helpText: 'Nouvelle date de retour',
+    );
+    if (picked == null || !mounted) return;
+    final newTotal = BusinessRules.extendedTotal(r, picked);
+    final ok = await confirmDialog(
+      context,
+      title: 'Prolonger la location ?',
+      message:
+          'Nouveau retour le ${formatShortDate(picked)}.\nNouveau total : ${formatMoney(newTotal)} '
+          '(+ ${formatMoney(newTotal - r.totalPrice)}).',
+      confirmLabel: 'Prolonger',
+      icon: Icons.update_rounded,
+      destructive: false,
+    );
+    if (ok != true) return;
+    try {
+      await _repo.extend(r, picked);
+      if (!mounted) return;
+      showSnack(context, 'Location prolongée jusqu\'au ${formatShortDate(picked)}',
+          kind: SnackKind.success);
+      _didChange = true;
+      _reload();
+    } on AppException catch (e) {
+      if (mounted) showSnack(context, e.message, kind: SnackKind.error);
+    }
   }
 
   Future<void> _changeStatus(Rental r, RentalStatus to, String title) async {
@@ -114,6 +249,9 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
               actions: [
                 DetailMenu(items: [
                   if (editable)
+                    DetailMenuItem('Prolonger', Icons.update_rounded,
+                        () => _extend(r)),
+                  if (editable)
                     DetailMenuItem(
                         'Modifier',
                         Icons.edit_rounded,
@@ -147,7 +285,9 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                     icon: Icons.schedule_rounded,
                     color: AppColors.danger,
                     text:
-                        'Retour attendu le ${formatDate(r.endDate)} : ce véhicule est en retard (${relativeDay(r.endDate).toLowerCase()}).',
+                        'Retour attendu le ${formatDate(r.endDate)} : ${BusinessRules.lateDays(r.endDate)} jour(s) de retard. '
+                        'Frais estimés à ce jour : ${formatMoney(BusinessRules.lateFee(r))} '
+                        '(tarif journalier + ${((BusinessRules.lateFeeMultiplier - 1) * 100).round()} %).',
                   ),
                   const SizedBox(height: 14),
                 ],
@@ -270,8 +410,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
               child: PrimaryButton(
                 label: 'Remettre les clés',
                 icon: Icons.key_rounded,
-                onPressed: () => _changeStatus(
-                    r, RentalStatus.enCours, 'Démarrer la location ?'),
+                onPressed: () => _start(r),
               ),
             ),
           ]),
@@ -280,24 +419,23 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
         return BottomActionBar(
           child: Row(children: [
             Expanded(
+              flex: 2,
               child: OutlinedButton(
-                style:
-                    OutlinedButton.styleFrom(minimumSize: const Size(0, 54)),
-                onPressed: () => _push(
-                    Routes.incidentForm,
-                    IncidentFormArgs(vehicleId: r.vehicleId, rentalId: r.id)),
-                child: const Text('Incident'),
+                style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 54),
+                    padding: const EdgeInsets.symmetric(horizontal: 8)),
+                onPressed: () => _extend(r),
+                child: const Text('Prolonger', maxLines: 1),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              flex: 2,
+              flex: 3,
               child: PrimaryButton(
-                label: 'Retour du véhicule',
+                label: 'Restituer',
                 icon: Icons.assignment_turned_in_rounded,
-                color: AppColors.success,
-                onPressed: () => _changeStatus(
-                    r, RentalStatus.terminee, 'Terminer la location ?'),
+                color: isRentalOverdue(r) ? AppColors.danger : AppColors.success,
+                onPressed: () => _return(r),
               ),
             ),
           ]),

@@ -11,6 +11,7 @@ class Routes {
   static const home = '/home';
   static const profile = '/profile';
   static const photoViewer = '/photo-viewer';
+  static const notifications = '/notifications';
 
   // users
   static const users = '/users';

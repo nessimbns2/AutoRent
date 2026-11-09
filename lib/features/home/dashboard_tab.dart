@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
 import '../../app/theme.dart';
+import '../../core/notifications/notification_service.dart';
 import '../../core/services/theme_controller.dart';
 import '../../core/session/session_manager.dart';
 import '../../core/utils/formatters.dart';
@@ -23,9 +24,14 @@ class DashboardTab extends StatefulWidget {
 
 class _DashboardTabState extends State<DashboardTab> {
   final _repo = DashboardRepository();
-  late Future<DashboardData> _future = _repo.load();
+  late Future<DashboardData> _future = _load();
 
-  void _reload() => setState(() { _future = _repo.load(); });
+  Future<DashboardData> _load() {
+    NotificationService.instance.refresh(); // keep the bell badge up to date
+    return _repo.load();
+  }
+
+  void _reload() => setState(() { _future = _load(); });
 
   Future<void> _open(String route, {Object? args}) async {
     final changed = await Navigator.pushNamed(context, route, arguments: args);
@@ -50,7 +56,12 @@ class _DashboardTabState extends State<DashboardTab> {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              _Header(data: d),
+              _Header(
+                  data: d,
+                  onOpenNotifications: () async {
+                    await Navigator.pushNamed(context, Routes.notifications);
+                    if (mounted) _reload();
+                  }),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
                 child: Column(
@@ -166,7 +177,8 @@ class _DashboardTabState extends State<DashboardTab> {
 // ─────────────────────────────────────────────────────────────────────────────
 class _Header extends StatelessWidget {
   final DashboardData data;
-  const _Header({required this.data});
+  final VoidCallback onOpenNotifications;
+  const _Header({required this.data, required this.onOpenNotifications});
 
   @override
   Widget build(BuildContext context) {
@@ -210,6 +222,19 @@ class _Header extends StatelessWidget {
                             color: Colors.white.withValues(alpha: 0.65)),
                       ),
                     ],
+                  ),
+                ),
+                ValueListenableBuilder<int>(
+                  valueListenable: NotificationService.instance.unread,
+                  builder: (context, count, _) => CircleIconButton(
+                    icon: count > 0
+                        ? Icons.notifications_active_rounded
+                        : Icons.notifications_none_rounded,
+                    tooltip: 'Notifications',
+                    color: Colors.white,
+                    background: Colors.white.withValues(alpha: 0.12),
+                    badge: count > 0 ? count : null,
+                    onPressed: onOpenNotifications,
                   ),
                 ),
                 ValueListenableBuilder<ThemeMode>(

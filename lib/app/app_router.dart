@@ -15,6 +15,7 @@ import '../features/incidents/incident_form_screen.dart';
 import '../features/maintenances/maintenance_detail_screen.dart';
 import '../features/maintenances/maintenance_form_screen.dart';
 import '../features/maintenances/maintenance_history_screen.dart';
+import '../features/notifications/notifications_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/rentals/rental_detail_screen.dart';
 import '../features/rentals/rental_form_screen.dart';
@@ -69,6 +70,8 @@ class AppRouter {
             s);
       case Routes.profile:
         return _page(const ProfileScreen(), s);
+      case Routes.notifications:
+        return _page(const NotificationsScreen(), s);
       case Routes.users:
         return _page(const UserListScreen(), s);
       case Routes.clients:

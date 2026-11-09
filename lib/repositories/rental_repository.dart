@@ -1,5 +1,7 @@
+import 'package:flutter/material.dart' show DateUtils;
 import 'package:sqflite/sqflite.dart';
 
+import '../core/constants/business_rules.dart';
 import '../core/database/database_helper.dart';
 import '../core/utils/app_exception.dart';
 import '../models/enums.dart';
@@ -98,6 +100,37 @@ class RentalRepository {
   Future<void> update(Rental r) async {
     final db = await _db;
     await db.update('rentals', r.toMap(), where: 'id = ?', whereArgs: [r.id]);
+  }
+
+  /// Extends a running or reserved contract up to [newEnd] at the same
+  /// daily rate. Refused if another booking overlaps the new period.
+  Future<Rental> extend(Rental r, DateTime newEnd) async {
+    if (!DateUtils.dateOnly(newEnd).isAfter(DateUtils.dateOnly(r.endDate))) {
+      throw const AppException(
+          'La nouvelle date de retour doit être après la date actuelle.');
+    }
+    if (await hasOverlap(r.vehicleId, r.startDate, newEnd, excludeId: r.id)) {
+      throw const AppException(
+          'Prolongation impossible : le véhicule est déjà réservé sur cette période.');
+    }
+    final updated = r.copyWith(
+      endDate: newEnd,
+      totalPrice: BusinessRules.extendedTotal(r, newEnd),
+    );
+    await update(updated);
+    return updated;
+  }
+
+  /// Closes a running contract. A late return moves the end date to
+  /// [returnDate] and adds the late fee to the total.
+  Future<void> completeReturn(Rental r, {DateTime? returnDate}) async {
+    final today = DateUtils.dateOnly(returnDate ?? DateTime.now());
+    final late = BusinessRules.lateDays(r.endDate, today);
+    await update(r.copyWith(
+      status: RentalStatus.terminee,
+      endDate: late > 0 ? today : r.endDate,
+      totalPrice: r.totalPrice + BusinessRules.lateFee(r, today),
+    ));
   }
 
   Future<void> changeStatus(int id, RentalStatus status) async {
