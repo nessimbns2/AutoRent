@@ -4,6 +4,7 @@ import '../../app/route_args.dart';
 import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/ui_helpers.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../core/widgets/status_chips.dart';
 import '../../models/enums.dart';
@@ -43,22 +44,52 @@ class _MaintenancesListState extends State<MaintenancesList> {
       builder: (context, snap) {
         final counts = snap.data?.counts ?? const {};
         return Column(children: [
-          PillTabs<MaintenanceStatus>(
-            selected: _status,
-            onChanged: (s) {
-              _status = s;
-              _reload();
-            },
-            tabs: [
-              for (final s in MaintenanceStatus.values)
-                PillTab(s, s.label, count: counts[s] ?? 0),
-            ],
-          ),
+          Row(children: [
+            Expanded(
+              child: PillTabs<MaintenanceStatus>(
+                selected: _status,
+                onChanged: (s) {
+                  _status = s;
+                  _reload();
+                },
+                tabs: [
+                  for (final s in MaintenanceStatus.values)
+                    PillTab(s, s.label, count: counts[s] ?? 0),
+                ],
+              ),
+            ),
+            // Stats button
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: IconButton.outlined(
+                tooltip: 'Statistiques',
+                icon: const Icon(Icons.bar_chart_rounded, size: 20),
+                onPressed: () => Navigator.pushNamed(
+                    context, Routes.maintenanceStats),
+              ),
+            ),
+          ]),
           const SizedBox(height: 10),
           Expanded(child: _list(snap)),
         ]);
       },
     );
+  }
+
+  Future<bool> _confirmAndDelete(MaintenanceView item) async {
+    final m = item.maintenance;
+    final ok = await confirmDialog(
+      context,
+      title: 'Supprimer cet entretien ?',
+      message: '${m.type} du ${formatDate(m.date)} sera supprimé.',
+      confirmLabel: 'Supprimer',
+      destructive: true,
+    );
+    if (ok != true) return false;
+    await _repo.delete(m.id!);
+    if (mounted) showSnack(context, 'Entretien supprimé');
+    _reload();
+    return true;
   }
 
   Widget _list(AsyncSnapshot<_Data> snap) {
@@ -77,17 +108,48 @@ class _MaintenancesListState extends State<MaintenancesList> {
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(20, 2, 20, 96),
         itemCount: items.length,
-        itemBuilder: (context, i) => MaintenanceTile(
-          view: items[i],
-          onTap: () async {
-            final changed = await Navigator.pushNamed(
-              context,
-              Routes.maintenanceDetail,
-              arguments: IdArgs(items[i].maintenance.id!),
-            );
-            if (changed == true && mounted) _reload();
-          },
-        ),
+        itemBuilder: (context, i) {
+          final item = items[i];
+          return Dismissible(
+            key: ValueKey('dismiss-maint-${item.maintenance.id}'),
+            direction: DismissDirection.endToStart,
+            dismissThresholds: const {DismissDirection.endToStart: 0.35},
+            background: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: AppColors.danger,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Supprimer',
+                    style:
+                        context.text.labelLarge?.copyWith(color: Colors.white),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.delete_outline_rounded,
+                      size: 22, color: Colors.white),
+                ],
+              ),
+            ),
+            confirmDismiss: (_) => _confirmAndDelete(item),
+            child: MaintenanceTile(
+              view: item,
+              onTap: () async {
+                final changed = await Navigator.pushNamed(
+                  context,
+                  Routes.maintenanceDetail,
+                  arguments: IdArgs(item.maintenance.id!),
+                );
+                if (changed == true && mounted) _reload();
+              },
+            ),
+          );
+        },
       ),
     );
   }
@@ -146,6 +208,9 @@ class MaintenanceTile extends StatelessWidget {
                     style: context.text.labelSmall?.copyWith(
                         color: late ? AppColors.danger : context.palette.muted),
                   ),
+                  const SizedBox(width: 6),
+                  if (m.status == MaintenanceStatus.planifie)
+                    _DateBadge(date: m.date),
                 ]),
                 if (m.description != null && m.description!.isNotEmpty) ...[
                   const SizedBox(height: 4),
@@ -153,6 +218,36 @@ class MaintenanceTile extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: context.text.bodySmall),
+                ],
+                if (m.garage != null ||
+                    m.costEstimated != null ||
+                    m.costActual != null) ...[
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    if (m.garage != null && m.garage!.isNotEmpty) ...[
+                      Icon(Icons.store_rounded,
+                          size: 14, color: context.palette.muted),
+                      const SizedBox(width: 3),
+                      Flexible(
+                        child: Text(m.garage!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.text.labelSmall
+                                ?.copyWith(color: context.palette.muted)),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (m.costActual != null || m.costEstimated != null) ...[
+                      Icon(Icons.payments_outlined,
+                          size: 14, color: context.palette.muted),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${(m.costActual ?? m.costEstimated)!.toStringAsFixed(0)} DT',
+                        style: context.text.labelSmall
+                            ?.copyWith(color: context.palette.muted),
+                      ),
+                    ],
+                  ]),
                 ],
               ],
             ),
@@ -167,4 +262,48 @@ class _Data {
   final List<MaintenanceView> items;
   final Map<MaintenanceStatus, int> counts;
   const _Data(this.items, this.counts);
+}
+
+/// Small colored pill badge shown next to the date for planifié entretiens.
+class _DateBadge extends StatelessWidget {
+  final DateTime date;
+  const _DateBadge({required this.date});
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final d = DateUtils.dateOnly(date);
+    final diff = d.difference(today).inDays;
+
+    final String? label;
+    final Color? color;
+    if (diff < 0) {
+      label = 'En retard';
+      color = Colors.red;
+    } else if (diff == 0) {
+      label = "Aujourd'hui";
+      color = Colors.orange;
+    } else if (diff <= 3) {
+      label = 'Bientôt';
+      color = Colors.amber.shade700;
+    } else {
+      label = null;
+      color = null;
+    }
+
+    if (label == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color!.withAlpha(38),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+            fontSize: 10, color: color, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
 }
