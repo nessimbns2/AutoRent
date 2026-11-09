@@ -1,7 +1,8 @@
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
-import '../../core/services/password_hasher.dart';
+import 'demo_data.dart';
+import 'incident_schema.dart';
 
 class DatabaseHelper {
   DatabaseHelper._();
@@ -9,9 +10,12 @@ class DatabaseHelper {
 
   static const _dbName = 'autorent.db';
 
-  /// v2: adds `incident_history` (status changes of incidents: who / when).
-  /// v3: adds `incidents.latitude` / `incidents.longitude` (map position).
-  static const _dbVersion = 3;
+  /// v1: initial schema + demo data
+  /// v2: new demo fleet (6 photographed cars) with rentals, maintenance and
+  ///     incidents — replaces the previous vehicles and rentals.
+  /// v4: incident status history + incident map position (see
+  ///     IncidentSchema). v3 was only used on the incident branch.
+  static const _dbVersion = 4;
 
   Database? _db;
 
@@ -32,73 +36,51 @@ class DatabaseHelper {
     for (final stmt in _schemaStatements) {
       await db.execute(stmt);
     }
-    await createIncidentHistory(db);
-    await addIncidentCoordinates(db);
-    await _seed(db);
-    await backfillIncidentHistory(db);
+    await IncidentSchema.createHistory(db);
+    await IncidentSchema.addCoordinates(db);
+    await DemoData.seedAccounts(db);
+    await DemoData.seedFleet(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldV, int newV) async {
-    if (oldV < 2) {
-      await createIncidentHistory(db);
-      await backfillIncidentHistory(db);
+    // A v2/v3 database from the incident branch already has the history table
+    // but still the old demo fleet: it gets the new fleet too.
+    final oldFleet = oldV < 2 ||
+        (oldV < 4 && await IncidentSchema.hasHistoryTable(db));
+    if (oldV < 4) {
+      await IncidentSchema.createHistory(db);
+      await IncidentSchema.addCoordinates(db);
     }
-    if (oldV < 3) {
-      await addIncidentCoordinates(db);
+    if (oldFleet) {
+      // Replace every vehicle, rental, maintenance and incident by the new
+      // demo fleet. Users and clients are kept (missing demo clients added).
+      await DemoData.resetFleet(db);
+      await DemoData.seedAccounts(db);
+      await DemoData.seedFleet(db);
     }
-  }
-
-  /// Schema v3 — optional map position of an incident. Idempotent: does
-  /// nothing when the columns already exist.
-  static Future<void> addIncidentCoordinates(DatabaseExecutor db) async {
-    final cols = {
-      for (final r in await db.rawQuery('PRAGMA table_info(incidents)'))
-        r['name'] as String,
-    };
-    if (!cols.contains('latitude')) {
-      await db.execute('ALTER TABLE incidents ADD COLUMN latitude REAL');
-    }
-    if (!cols.contains('longitude')) {
-      await db.execute('ALTER TABLE incidents ADD COLUMN longitude REAL');
-    }
-  }
-
-  /// Schema v2 — one row per status change of an incident. `from_statut` is
-  /// NULL for the declaration itself.
-  static Future<void> createIncidentHistory(DatabaseExecutor db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS incident_history (
-        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-        incident_id        INTEGER NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
-        from_statut        TEXT CHECK (from_statut IN ('en_attente','en_cours','resolu')),
-        to_statut          TEXT NOT NULL CHECK (to_statut IN ('en_attente','en_cours','resolu')),
-        changed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        changed_at         TEXT NOT NULL
-      )
-    ''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_incident_history_incident '
-      'ON incident_history(incident_id, changed_at)',
-    );
-  }
-
-  /// Gives every incident without history a "declared" entry (current status,
-  /// declaring user, creation time) so old data shows up in the follow-up.
-  static Future<void> backfillIncidentHistory(DatabaseExecutor db) async {
-    await db.execute('''
-      INSERT INTO incident_history
-        (incident_id, from_statut, to_statut, changed_by_user_id, changed_at)
-      SELECT i.id, NULL, i.statut, i.reported_by_user_id, i.created_at
-      FROM incidents i
-      WHERE NOT EXISTS (
-        SELECT 1 FROM incident_history h WHERE h.incident_id = i.id
-      )
-    ''');
+    // Incidents typed on main before v4 get a "declared" history entry.
+    await IncidentSchema.backfillHistory(db);
   }
 
   Future<void> close() async {
     await _db?.close();
     _db = null;
+  }
+
+  /// Full path of the SQLite file on this device.
+  Future<String> get filePath async => join(await getDatabasesPath(), _dbName);
+
+  /// Number of rows per business table (shown in the Profil tab).
+  Future<Map<String, int>> tableCounts() async {
+    final db = await database;
+    const tables = [
+      'users', 'clients', 'vehicles', 'vehicle_photos',
+      'maintenances', 'rentals', 'incidents', 'incident_photos',
+    ];
+    return {
+      for (final t in tables)
+        t: Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $t')) ?? 0
+    };
   }
 
   // ── Schema ──────────────────────────────────────────────────────────────────
@@ -203,291 +185,4 @@ class DatabaseHelper {
     'CREATE INDEX idx_incident_photos_incident ON incident_photos(incident_id)',
   ];
 
-  // ── Seed ────────────────────────────────────────────────────────────────────
-
-  Future<void> _seed(Database db) async {
-    final now = DateTime.now();
-    final ts = now.toIso8601String();
-
-    // Users
-    final adminHash = PasswordHasher.hash('Admin123!');
-    final agentHash = PasswordHasher.hash('Agent123!');
-    final adminId = await db.insert('users', {
-      'nom': 'Administrateur',
-      'prenom': 'AutoRent',
-      'email': 'admin@autorent.tn',
-      'password_hash': adminHash,
-      'created_at': ts,
-    });
-    final agentId = await db.insert('users', {
-      'nom': 'Ben Ali',
-      'prenom': 'Sami',
-      'email': 'agent@autorent.tn',
-      'password_hash': agentHash,
-      'created_at': ts,
-    });
-
-    // Clients
-    final client1 = await db.insert('clients', {
-      'nom': 'Hamdi',
-      'prenom': 'Rania',
-      'telephone': '22334455',
-      'email': 'rania@example.com',
-      'numero_permis': 'P123456',
-      'created_at': ts,
-    });
-    final client2 = await db.insert('clients', {
-      'nom': 'Trabelsi',
-      'prenom': 'Mohamed',
-      'telephone': '55667788',
-      'numero_permis': 'P789012',
-      'created_at': ts,
-    });
-    final client3 = await db.insert('clients', {
-      'nom': 'Bouzid',
-      'prenom': 'Leila',
-      'telephone': '98765432',
-      'email': 'leila.bouzid@example.com',
-      'numero_permis': 'P345678',
-      'created_at': ts,
-    });
-
-    // Vehicles (5)
-    final v1 = await db.insert('vehicles', {
-      'marque': 'Peugeot',
-      'modele': '208',
-      'immatriculation': '123 TUN 4567',
-      'prix_par_jour': 80.0,
-      'disponible': 1,
-      'created_at': ts,
-    });
-    final v2 = await db.insert('vehicles', {
-      'marque': 'Renault',
-      'modele': 'Clio',
-      'immatriculation': '456 TUN 1234',
-      'prix_par_jour': 75.0,
-      'disponible': 1,
-      'created_at': ts,
-    });
-    final v3 = await db.insert('vehicles', {
-      'marque': 'Toyota',
-      'modele': 'Yaris',
-      'immatriculation': '789 TUN 5678',
-      'prix_par_jour': 90.0,
-      'disponible': 1,
-      'created_at': ts,
-    });
-    final v4 = await db.insert('vehicles', {
-      'marque': 'Volkswagen',
-      'modele': 'Golf',
-      'immatriculation': '321 TUN 9876',
-      'prix_par_jour': 100.0,
-      'disponible': 1,
-      'created_at': ts,
-    });
-    final v5 = await db.insert('vehicles', {
-      'marque': 'Dacia',
-      'modele': 'Logan',
-      'immatriculation': '654 TUN 3210',
-      'prix_par_jour': 60.0,
-      'disponible': 0,
-      'created_at': ts,
-    });
-
-    // Maintenances (3 — one per status)
-    await db.insert('maintenances', {
-      'vehicle_id': v1,
-      'type': 'Vidange',
-      'date': _isoDate(now.subtract(const Duration(days: 10))),
-      'statut': 'termine',
-      'created_at': ts,
-    });
-    await db.insert('maintenances', {
-      'vehicle_id': v2,
-      'type': 'Pneus',
-      'date': _isoDate(now),
-      'statut': 'en_cours',
-      'description': 'Remplacement des pneus avant',
-      'created_at': ts,
-    });
-    await db.insert('maintenances', {
-      'vehicle_id': v3,
-      'type': 'Révision',
-      'date': _isoDate(now.add(const Duration(days: 5))),
-      'statut': 'planifie',
-      'description': 'Révision annuelle',
-      'created_at': ts,
-    });
-
-    // Rentals (3 — reservee / en_cours / terminee)
-    await db.insert('rentals', {
-      'client_id': client1,
-      'vehicle_id': v3,
-      'user_id': adminId,
-      'date_debut': _isoDate(now.add(const Duration(days: 3))),
-      'date_fin': _isoDate(now.add(const Duration(days: 7))),
-      'prix_total': 90.0 * 4,
-      'statut': 'reservee',
-      'created_at': ts,
-    });
-    final r2 = await db.insert('rentals', {
-      'client_id': client2,
-      'vehicle_id': v4,
-      'user_id': agentId,
-      'date_debut': _isoDate(now.subtract(const Duration(days: 2))),
-      'date_fin': _isoDate(now.add(const Duration(days: 3))),
-      'prix_total': 100.0 * 5,
-      'statut': 'en_cours',
-      'created_at': ts,
-    });
-    await db.insert('rentals', {
-      'client_id': client3,
-      'vehicle_id': v1,
-      'user_id': adminId,
-      'date_debut': _isoDate(now.subtract(const Duration(days: 14))),
-      'date_fin': _isoDate(now.subtract(const Duration(days: 10))),
-      'prix_total': 80.0 * 4,
-      'statut': 'terminee',
-      'created_at': ts,
-    });
-
-    // Incidents (7) — every status and type, each with its status history
-    // (who changed what, and when) so the follow-up dashboard has data.
-    DateTime ago(int days, [int hour = 9, int minute = 0]) {
-      final d = now.subtract(Duration(days: days));
-      return DateTime(d.year, d.month, d.day, hour, minute);
-    }
-
-    Future<void> incident({
-      required int vehicleId,
-      int? rentalId,
-      required int reportedBy,
-      required String type,
-      required int daysAgo,
-      required String lieu,
-      required (double lat, double lng) position,
-      required String description,
-      required List<(String statut, int userId, DateTime at)> history,
-    }) async {
-      final id = await db.insert('incidents', {
-        'vehicle_id': vehicleId,
-        'rental_id': rentalId,
-        'reported_by_user_id': reportedBy,
-        'type': type,
-        'date': _isoDate(now.subtract(Duration(days: daysAgo))),
-        'lieu': lieu,
-        'latitude': position.$1,
-        'longitude': position.$2,
-        'description': description,
-        'statut': history.last.$1,
-        'created_at': history.first.$3.toIso8601String(),
-      });
-      String? from;
-      for (final (statut, userId, at) in history) {
-        await db.insert('incident_history', {
-          'incident_id': id,
-          'from_statut': from,
-          'to_statut': statut,
-          'changed_by_user_id': userId,
-          'changed_at': at.toIso8601String(),
-        });
-        from = statut;
-      }
-    }
-
-    await incident(
-      vehicleId: v1,
-      reportedBy: agentId,
-      type: 'accident',
-      daysAgo: 12,
-      lieu: 'Tunis centre',
-      position: (36.7992, 10.1802),
-      description: 'Accrochage léger en parking. Pare-choc avant endommagé.',
-      history: [('en_attente', agentId, ago(12, 10, 15))],
-    );
-    await incident(
-      vehicleId: v4,
-      rentalId: r2,
-      reportedBy: adminId,
-      type: 'panne',
-      daysAgo: 1,
-      lieu: 'Autoroute A1 km 54',
-      position: (36.4650, 10.3720),
-      description: "Crevaison lors d'un trajet. Roue de secours montée.",
-      history: [
-        ('en_attente', adminId, ago(1, 8, 40)),
-        ('en_cours', agentId, ago(1, 9, 5)),
-        ('resolu', agentId, ago(1, 14, 30)),
-      ],
-    );
-    await incident(
-      vehicleId: v2,
-      reportedBy: agentId,
-      type: 'panne',
-      daysAgo: 3,
-      lieu: 'Parking Lac 2, Tunis',
-      position: (36.8475, 10.2700),
-      description:
-          'Le véhicule ne démarre plus, batterie à plat. Dépanneuse appelée.',
-      history: [
-        ('en_attente', agentId, ago(3, 9, 10)),
-        ('en_cours', adminId, ago(3, 11, 30)),
-      ],
-    );
-    await incident(
-      vehicleId: v1,
-      reportedBy: agentId,
-      type: 'accident',
-      daysAgo: 11,
-      lieu: 'Avenue Habib Bourguiba, Tunis',
-      position: (36.7999, 10.1860),
-      description: 'Choc arrière à un feu rouge. Feu arrière gauche cassé, constat amiable rempli.',
-      history: [
-        ('en_attente', agentId, ago(11, 17, 20)),
-        ('en_cours', adminId, ago(10, 9, 0)),
-        ('resolu', adminId, ago(6, 16, 45)),
-      ],
-    );
-    await incident(
-      vehicleId: v3,
-      reportedBy: adminId,
-      type: 'panne',
-      daysAgo: 1,
-      lieu: 'Route de la Marsa',
-      position: (36.8650, 10.3050),
-      description: 'Voyant moteur allumé et perte de puissance en côte.',
-      history: [('en_attente', adminId, ago(1, 18, 5))],
-    );
-    await incident(
-      vehicleId: v4,
-      rentalId: r2,
-      reportedBy: agentId,
-      type: 'accident',
-      daysAgo: 0,
-      lieu: 'Sousse, zone touristique',
-      position: (35.8600, 10.6100),
-      description: 'Rayure profonde sur la portière arrière droite, constatée au retour du parking.',
-      history: [
-        ('en_attente', agentId, ago(0, 8, 30)),
-        ('en_cours', agentId, ago(0, 8, 50)),
-      ],
-    );
-    await incident(
-      vehicleId: v5,
-      reportedBy: adminId,
-      type: 'panne',
-      daysAgo: 20,
-      lieu: 'Autoroute A1, sortie Hammamet',
-      position: (36.4220, 10.5650),
-      description:
-          'Pneu avant gauche éclaté. Remorquage jusqu\'au garage partenaire.',
-      history: [
-        ('en_attente', adminId, ago(20, 7, 45)),
-        ('en_cours', agentId, ago(20, 9, 15)),
-        ('resolu', agentId, ago(19, 12, 0)),
-      ],
-    );
-  }
-
-  static String _isoDate(DateTime d) => d.toIso8601String().substring(0, 10);
 }

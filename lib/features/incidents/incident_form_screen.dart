@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../app/theme.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/constants/strings.dart';
@@ -191,7 +193,6 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
   }
 
   Widget _buildLocationField() {
-    final scheme = Theme.of(context).colorScheme;
     return AnimatedSize(
       duration: const Duration(milliseconds: 250),
       alignment: Alignment.topCenter,
@@ -201,9 +202,9 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
-                  foregroundColor: IncidentPalette.brown,
+                  foregroundColor: AppColors.brand,
                   side: BorderSide(
-                    color: IncidentPalette.brown.withValues(alpha: 0.5),
+                    color: AppColors.brand.withValues(alpha: 0.5),
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -228,7 +229,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                     Icon(
                       Icons.gps_fixed_rounded,
                       size: 15,
-                      color: scheme.onSurfaceVariant,
+                      color: context.palette.muted,
                     ),
                     const SizedBox(width: 6),
                     Expanded(
@@ -236,7 +237,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                         formatLatLng(_position!),
                         style: TextStyle(
                           fontSize: 12.5,
-                          color: scheme.onSurfaceVariant,
+                          color: context.palette.muted,
                         ),
                       ),
                     ),
@@ -246,7 +247,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                     ),
                     TextButton(
                       style: TextButton.styleFrom(
-                        foregroundColor: IncidentPalette.danger,
+                        foregroundColor: AppColors.danger,
                       ),
                       onPressed: () => setState(() => _position = null),
                       child: const Text('Retirer'),
@@ -264,7 +265,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
     final leave = await showIncidentConfirmSheet(
       context,
       icon: Icons.edit_off_rounded,
-      color: IncidentPalette.brown,
+      color: AppColors.brand,
       title: _isEdit
           ? 'Abandonner les modifications ?'
           : 'Abandonner la déclaration ?',
@@ -369,7 +370,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
         message: _isEdit
             ? 'Les modifications ont été enregistrées.'
             : 'La déclaration est en attente de prise en charge.',
-        color: _isEdit ? IncidentPalette.forest : IncidentPalette.brown,
+        color: _isEdit ? AppColors.success : AppColors.brand,
       );
       if (!mounted) return;
       Navigator.pop(context, true);
@@ -403,7 +404,6 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
       );
     }
 
-    final scheme = Theme.of(context).colorScheme;
     var section = 0;
     Widget animated(Widget child) => EntranceAnimation(
       delay: Duration(milliseconds: 60 * section++),
@@ -416,11 +416,8 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
         if (!didPop) _confirmLeave();
       },
       child: Scaffold(
-        backgroundColor: scheme.surfaceContainerLowest,
         appBar: AppBar(
           title: Text(_isEdit ? "Modifier l'incident" : 'Déclarer un incident'),
-          backgroundColor: IncidentPalette.brown,
-          foregroundColor: Colors.white,
         ),
         bottomNavigationBar: _buildSaveBar(),
         body: SafeArea(
@@ -429,7 +426,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
             child: Form(
               key: _formKey,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
                 children: [
                   // 1. Type
                   animated(
@@ -458,6 +455,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                   animated(
                     IncidentSection(
                       icon: Icons.directions_car_rounded,
+                      iconColor: AppColors.info,
                       title: 'Véhicule concerné',
                       child: Column(
                         children: [
@@ -517,6 +515,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                   animated(
                     IncidentSection(
                       icon: Icons.notes_rounded,
+                      iconColor: AppColors.violet,
                       title: 'Que s\'est-il passé ?',
                       trailing: _DescriptionCounter(
                         length: _descriptionController.text.trim().length,
@@ -547,10 +546,11 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                   animated(
                     IncidentSection(
                       icon: Icons.photo_camera_rounded,
+                      iconColor: AppColors.teal,
                       title: 'Photos de constat',
                       trailing: Text(
                         '${_photos.length}/$_maxPhotos',
-                        style: TextStyle(color: scheme.onSurfaceVariant),
+                        style: context.text.bodySmall,
                       ),
                       child: PhotoPickerField(
                         fileNames: _photos,
@@ -565,6 +565,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                     animated(
                       IncidentSection(
                         icon: Icons.flag_rounded,
+                        iconColor: AppColors.success,
                         title: 'Statut',
                         child: Wrap(
                           spacing: 8,
@@ -581,8 +582,16 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                                 selected: _status == s,
                                 showCheckmark: false,
                                 selectedColor: s.color,
+                                backgroundColor: context.colors.surface,
+                                side: BorderSide(
+                                  color: _status == s
+                                      ? s.color
+                                      : context.palette.border,
+                                ),
                                 labelStyle: TextStyle(
-                                  color: _status == s ? Colors.white : null,
+                                  color: _status == s
+                                      ? Colors.white
+                                      : context.colors.onSurface,
                                   fontWeight: FontWeight.w600,
                                 ),
                                 shape: const StadiumBorder(),
@@ -618,15 +627,15 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
         final borderColor = field.hasError
             ? scheme.error
             : v != null
-            ? scheme.primary
-            : scheme.outline;
+            ? AppColors.brand
+            : context.palette.border;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Material(
               color: v != null
-                  ? scheme.primaryContainer.withValues(alpha: 0.25)
-                  : Colors.transparent,
+                  ? AppColors.brand.withValues(alpha: 0.06)
+                  : context.palette.surfaceAlt,
               borderRadius: BorderRadius.circular(16),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
@@ -652,10 +661,10 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                               ? Container(
                                   width: 64,
                                   height: 48,
-                                  color: scheme.surfaceContainerHighest,
+                                  color: context.colors.surface,
                                   child: Icon(
                                     Icons.directions_car_rounded,
-                                    color: scheme.onSurfaceVariant,
+                                    color: context.palette.muted,
                                   ),
                                 )
                               : CarImage(
@@ -671,9 +680,8 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                           child: v == null
                               ? Text(
                                   'Choisir un véhicule',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    color: scheme.onSurfaceVariant,
+                                  style: context.text.bodyMedium?.copyWith(
+                                    color: context.palette.muted,
                                   ),
                                 )
                               : Column(
@@ -681,19 +689,10 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                                   children: [
                                     Text(
                                       '${v.brand} ${v.model}',
-                                      style: const TextStyle(
-                                        fontSize: 15.5,
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                                      style: context.text.titleSmall,
                                     ),
                                     const SizedBox(height: 2),
-                                    Text(
-                                      v.plate,
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        color: scheme.onSurfaceVariant,
-                                      ),
-                                    ),
+                                    Text(v.plate, style: context.text.bodySmall),
                                   ],
                                 ),
                         ),
@@ -701,7 +700,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                           lockVehicle
                               ? Icons.lock_outline_rounded
                               : Icons.unfold_more_rounded,
-                          color: scheme.onSurfaceVariant,
+                          color: context.palette.muted,
                         ),
                       ],
                     ),
@@ -728,26 +727,56 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(const Duration(days: 1));
     final selected = DateTime(_date.year, _date.month, _date.day);
-    Widget chip(String label, DateTime d) => Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected == d,
-        onSelected: (_) => _setDate(d),
-        shape: const StadiumBorder(),
+    // Same look as the app's PillTabs: ink when selected (orange in dark
+    // mode), surface with a soft border otherwise.
+    final selectedBg = context.isDark ? AppColors.brand : AppColors.ink;
+    Widget brownChip({
+      required String label,
+      required bool isSelected,
+      required VoidCallback onTap,
+      IconData? icon,
+    }) => ChoiceChip(
+      avatar: icon == null
+          ? null
+          : Icon(
+              icon,
+              size: 18,
+              color: isSelected ? Colors.white : AppColors.brand,
+            ),
+      label: Text(label),
+      selected: isSelected,
+      showCheckmark: false,
+      selectedColor: selectedBg,
+      backgroundColor: context.colors.surface,
+      side: BorderSide(
+        color: isSelected ? Colors.transparent : context.palette.border,
       ),
+      labelStyle: context.text.labelMedium?.copyWith(
+        color: isSelected ? Colors.white : context.colors.onSurface,
+      ),
+      onSelected: (_) => onTap(),
+      shape: const StadiumBorder(),
     );
     final isOther = selected != today && selected != yesterday;
-    return Row(
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
       children: [
-        chip("Aujourd'hui", today),
-        chip('Hier', yesterday),
-        ChoiceChip(
-          avatar: const Icon(Icons.calendar_month_rounded, size: 18),
-          label: Text(isOther ? formatDate(_date) : 'Autre date'),
-          selected: isOther,
-          onSelected: (_) => _pickDate(),
-          shape: const StadiumBorder(),
+        brownChip(
+          label: "Aujourd'hui",
+          isSelected: selected == today,
+          onTap: () => _setDate(today),
+        ),
+        brownChip(
+          label: 'Hier',
+          isSelected: selected == yesterday,
+          onTap: () => _setDate(yesterday),
+        ),
+        brownChip(
+          label: isOther ? formatDate(_date) : 'Autre date',
+          icon: Icons.calendar_month_rounded,
+          isSelected: isOther,
+          onTap: _pickDate,
         ),
       ],
     );
@@ -783,9 +812,8 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
   }
 
   Widget _buildRentalBanner() {
-    final scheme = Theme.of(context).colorScheme;
     final linked = _activeRental != null;
-    final color = linked ? IncidentPalette.denim : scheme.outline;
+    final color = linked ? AppColors.info : context.palette.muted;
 
     final Widget content;
     if (_lookingUpRental) {
@@ -800,7 +828,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
           const SizedBox(width: 12),
           Text(
             'Recherche d\'une location active…',
-            style: TextStyle(color: scheme.onSurfaceVariant),
+            style: TextStyle(color: context.palette.muted),
           ),
         ],
       );
@@ -824,7 +852,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                   '${r.clientName} · ${formatDate(r.rental.startDate)} → ${formatDate(r.rental.endDate)}',
                   style: TextStyle(
                     fontSize: 12.5,
-                    color: scheme.onSurfaceVariant,
+                    color: context.palette.muted,
                   ),
                 ),
               ],
@@ -843,7 +871,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
               _selectedVehicleId == null
                   ? 'Choisissez un véhicule pour retrouver sa location en cours'
                   : 'Aucune location active pour ce véhicule à cette date',
-              style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+              style: TextStyle(fontSize: 12.5, color: context.palette.muted),
             ),
           ),
         ],
@@ -869,60 +897,12 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
     );
   }
 
-  Widget _buildSaveBar() => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        decoration: BoxDecoration(
-          gradient: IncidentPalette.brandGradient,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: IncidentPalette.brown.withValues(alpha: 0.35),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: FilledButton.icon(
-          style: FilledButton.styleFrom(
-            backgroundColor: Colors.transparent,
-            shadowColor: Colors.transparent,
-            minimumSize: const Size.fromHeight(54),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          onPressed: _saving ? null : _save,
-          icon: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: _saving
-                ? const SizedBox(
-                    key: ValueKey('saving'),
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : Icon(
-                    _isEdit ? Icons.save_rounded : Icons.send_rounded,
-                    key: const ValueKey('idle'),
-                    color: Colors.white,
-                  ),
-          ),
-          label: Text(
-            _isEdit ? 'Enregistrer les modifications' : "Déclarer l'incident",
-            style: const TextStyle(color: Colors.white),
-          ),
-        ),
-      ),
+  Widget _buildSaveBar() => BottomActionBar(
+    child: PrimaryButton(
+      loading: _saving,
+      icon: _isEdit ? Icons.save_rounded : Icons.send_rounded,
+      label: _isEdit ? 'Enregistrer les modifications' : "Déclarer l'incident",
+      onPressed: _save,
     ),
   );
 }
@@ -942,74 +922,87 @@ class _TypeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return AnimatedScale(
-      scale: selected ? 1.0 : 0.95,
+      scale: selected ? 1.0 : 0.97,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutBack,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
-          gradient: selected ? type.gradient : null,
-          color: selected ? null : scheme.surface,
-          borderRadius: BorderRadius.circular(20),
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(
-            color: selected ? Colors.transparent : scheme.outlineVariant,
-            width: 1.5,
+            color: selected ? type.color : context.palette.border,
+            width: selected ? 2 : 1,
           ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: type.color.withValues(alpha: 0.4),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : const [],
+          boxShadow: [
+            BoxShadow(
+              color: selected
+                  ? type.color.withValues(alpha: 0.22)
+                  : context.palette.cardShadow,
+              blurRadius: selected ? 18 : 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         child: Material(
           type: MaterialType.transparency,
           child: InkWell(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
-              child: Column(
-                children: [
-                  AnimatedScale(
-                    scale: selected ? 1.15 : 1.0,
-                    duration: const Duration(milliseconds: 350),
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 18, 12, 16),
+                  child: Column(
+                    children: [
+                      AnimatedScale(
+                        scale: selected ? 1.08 : 1.0,
+                        duration: const Duration(milliseconds: 350),
+                        curve: Curves.easeOutBack,
+                        child: IncidentTypeBadge(
+                          type: type,
+                          size: 56,
+                          filled: selected,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(type.label, style: context.text.titleSmall),
+                      const SizedBox(height: 2),
+                      Text(
+                        type.hint,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        style: context.text.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                // Check mark on the selected card.
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: AnimatedScale(
+                    scale: selected ? 1 : 0,
+                    duration: const Duration(milliseconds: 250),
                     curve: Curves.easeOutBack,
-                    child: Icon(
-                      type.icon,
-                      size: 40,
-                      color: selected ? Colors.white : type.color,
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: type.color,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check_rounded,
+                        size: 15,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    type.label,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: selected ? Colors.white : scheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    type.hint,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: selected
-                          ? Colors.white.withValues(alpha: 0.9)
-                          : scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1027,8 +1020,8 @@ class _DescriptionCounter extends StatelessWidget {
   Widget build(BuildContext context) {
     final ok = length >= min;
     final color = ok
-        ? IncidentPalette.forest
-        : Theme.of(context).colorScheme.outline;
+        ? AppColors.success
+        : context.palette.muted;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
       transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),

@@ -1,7 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
+
+import '../../app/theme.dart';
 
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
@@ -17,14 +18,18 @@ import 'incident_stats_screen.dart';
 import 'widgets/incident_sheets.dart';
 import 'widgets/incident_ui.dart';
 
-class IncidentsTab extends StatefulWidget {
-  const IncidentsTab({super.key});
+/// Incident list with status cards, search and filters — embedded in the
+/// "Suivi" tab, which owns the "Déclarer" button. [refreshToken] changes after
+/// a declaration made from that button.
+class IncidentsList extends StatefulWidget {
+  final int refreshToken;
+  const IncidentsList({super.key, this.refreshToken = 0});
 
   @override
-  State<IncidentsTab> createState() => _IncidentsTabState();
+  State<IncidentsList> createState() => _IncidentsListState();
 }
 
-class _IncidentsTabState extends State<IncidentsTab> {
+class _IncidentsListState extends State<IncidentsList> {
   final _repo = IncidentRepository();
 
   IncidentStatus _status = IncidentStatus.enAttente;
@@ -46,14 +51,22 @@ class _IncidentsTabState extends State<IncidentsTab> {
   int _version = 0;
   int _loadToken = 0;
 
-  bool _fabExtended = true;
-
   bool get _isFiltered => _typeFilter != null || _query.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     _reload();
+  }
+
+  @override
+  void didUpdateWidget(covariant IncidentsList old) {
+    super.didUpdateWidget(old);
+    if (old.refreshToken != widget.refreshToken) {
+      // A new declaration always starts "en attente": show it there.
+      _status = IncidentStatus.enAttente;
+      _reload();
+    }
   }
 
   @override
@@ -108,15 +121,6 @@ class _IncidentsTabState extends State<IncidentsTab> {
       _query = value;
       _reload();
     });
-  }
-
-  Future<void> _openForm() async {
-    final saved = await Navigator.pushNamed(context, Routes.incidentForm);
-    if (saved == true && mounted) {
-      // A new declaration always starts "en attente": show it there.
-      _status = IncidentStatus.enAttente;
-      _reload();
-    }
   }
 
   Future<void> _openDetail(Incident inc) async {
@@ -231,80 +235,65 @@ class _IncidentsTabState extends State<IncidentsTab> {
     }
   }
 
-  bool _onScroll(UserScrollNotification n) {
-    final extended = n.direction != ScrollDirection.reverse;
-    if (n.direction != ScrollDirection.idle && extended != _fabExtended) {
-      setState(() => _fabExtended = extended);
-    }
-    return false;
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openForm,
-        isExtended: _fabExtended,
-        icon: const Icon(Icons.add_alert_rounded, size: 20),
-        label: const Text('Déclarer'),
-      ),
-      body: ResponsiveCenter(
-        maxWidth: 900,
-        child: Column(
-          children: [
-            _buildStatusSelector(),
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _IncidentSearchBar(
-                      onChanged: _onSearchChanged,
-                      resultCount: _query.trim().isEmpty || _loading
-                          ? null
-                          : _items.length,
-                    ),
+    return ResponsiveCenter(
+      maxWidth: 900,
+      child: Column(
+        children: [
+          _buildStatusSelector(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _IncidentSearchBar(
+                    onChanged: _onSearchChanged,
+                    resultCount: _query.trim().isEmpty || _loading
+                        ? null
+                        : _items.length,
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Tooltip(
-                      message: 'Suivi des incidents',
-                      child: Material(
-                        color: IncidentPalette.brown,
-                        borderRadius: BorderRadius.circular(18),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(18),
-                          onTap: _openStats,
-                          child: const SizedBox(
-                            width: 52,
-                            height: 52,
-                            child: Icon(
-                              Icons.insights_rounded,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
+                const SizedBox(width: 10),
+                _StatsButton(onTap: _openStats),
+              ],
+            ),
+          ),
+          PillTabs<IncidentType?>(
+            selected: _typeFilter,
+            onChanged: _selectType,
+            tabs: [
+              const PillTab(null, 'Tous', icon: Icons.apps_rounded),
+              PillTab(
+                IncidentType.accident,
+                'Accidents',
+                icon: IncidentType.accident.icon,
               ),
+              PillTab(
+                IncidentType.panne,
+                'Pannes',
+                icon: IncidentType.panne.icon,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          AnimatedOpacity(
+            opacity: _loading && _version > 0 ? 1 : 0,
+            duration: const Duration(milliseconds: 200),
+            child: const LinearProgressIndicator(
+              minHeight: 2,
+              color: AppColors.brand,
+              backgroundColor: Colors.transparent,
             ),
-            Align(alignment: Alignment.centerLeft, child: _buildTypeFilter()),
-            AnimatedOpacity(
-              opacity: _loading ? 1 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: const LinearProgressIndicator(minHeight: 2),
-            ),
-            Expanded(child: _buildBody()),
-          ],
-        ),
+          ),
+          Expanded(child: _buildBody()),
+        ],
       ),
     );
   }
 
   Widget _buildStatusSelector() => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+    padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
     child: Row(
       children: [
         for (final s in IncidentStatus.values) ...[
@@ -316,59 +305,11 @@ class _IncidentsTabState extends State<IncidentsTab> {
               onTap: () => _selectStatus(s),
             ),
           ),
-          if (s != IncidentStatus.values.last) const SizedBox(width: 8),
+          if (s != IncidentStatus.values.last) const SizedBox(width: 10),
         ],
       ],
     ),
   );
-
-  Widget _buildTypeFilter() {
-    Widget chip(IncidentType? type, String label, IconData icon, Color color) {
-      final selected = _typeFilter == type;
-      return Padding(
-        padding: const EdgeInsets.only(right: 8),
-        child: ChoiceChip(
-          avatar: Icon(icon, size: 18, color: selected ? Colors.white : color),
-          label: Text(label),
-          selected: selected,
-          showCheckmark: false,
-          selectedColor: color,
-          side: BorderSide(
-            color: selected ? color : color.withValues(alpha: 0.35),
-          ),
-          labelStyle: TextStyle(
-            color: selected ? Colors.white : color,
-            fontWeight: FontWeight.w700,
-          ),
-          shape: const StadiumBorder(),
-          onSelected: (_) => _selectType(type),
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          chip(null, 'Tous', Icons.apps_rounded, IncidentPalette.brown),
-          chip(
-            IncidentType.accident,
-            'Accidents',
-            IncidentType.accident.icon,
-            IncidentType.accident.color,
-          ),
-          chip(
-            IncidentType.panne,
-            'Pannes',
-            IncidentType.panne.icon,
-            IncidentType.panne.color,
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildBody() {
     if (_error != null && _items.isEmpty) {
@@ -394,7 +335,7 @@ class _IncidentsTabState extends State<IncidentsTab> {
         : ListView.builder(
             key: ValueKey('list-$_version'),
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
             itemCount: _items.length + 1,
             itemBuilder: (context, i) {
               if (i == 0) return _SwipeHint(status: _status);
@@ -413,21 +354,19 @@ class _IncidentsTabState extends State<IncidentsTab> {
             },
           );
 
-    return NotificationListener<UserScrollNotification>(
-      onNotification: _onScroll,
-      child: RefreshIndicator(
+    return RefreshIndicator(
         onRefresh: _reload,
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 250),
           child: content,
         ),
-      ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Search bar: filled pill, brown focus ring, clear button, result count
+// Search field in the app style (surface fill, soft border, orange focus),
+// with a clear button and the result count.
 // ─────────────────────────────────────────────────────────────────────────────
 class _IncidentSearchBar extends StatefulWidget {
   final ValueChanged<String> onChanged;
@@ -463,97 +402,122 @@ class _IncidentSearchBarState extends State<_IncidentSearchBar> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final focused = _focus.hasFocus;
     final hasText = _controller.text.isNotEmpty;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        height: 52,
-        decoration: BoxDecoration(
-          color: focused ? scheme.surface : scheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(26),
-          border: Border.all(
-            color: focused ? IncidentPalette.brown : Colors.transparent,
-            width: 1.6,
-          ),
-          boxShadow: focused
-              ? [
-                  BoxShadow(
-                    color: IncidentPalette.brown.withValues(alpha: 0.18),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : const [],
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      height: 52,
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md + 2),
+        border: Border.all(
+          color: focused ? AppColors.brand : context.palette.border,
+          width: focused ? 1.6 : 1,
         ),
-        child: Row(
-          children: [
-            const SizedBox(width: 16),
-            Icon(
-              Icons.search_rounded,
-              size: 22,
-              color: focused ? IncidentPalette.brown : scheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(
-                controller: _controller,
-                focusNode: _focus,
-                textInputAction: TextInputAction.search,
-                onChanged: (v) {
-                  setState(() {});
-                  widget.onChanged(v);
-                },
-                decoration: InputDecoration(
-                  hintText: 'Véhicule, plaque, lieu, locataire…',
-                  hintStyle: TextStyle(color: scheme.onSurfaceVariant),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  isCollapsed: true,
+        boxShadow: [
+          BoxShadow(
+            color: focused
+                ? AppColors.brand.withValues(alpha: 0.14)
+                : context.palette.cardShadow,
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 14),
+          Icon(
+            Icons.search_rounded,
+            size: 22,
+            color: focused ? AppColors.brand : context.palette.muted,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              focusNode: _focus,
+              textInputAction: TextInputAction.search,
+              onChanged: (v) {
+                setState(() {});
+                widget.onChanged(v);
+              },
+              decoration: InputDecoration(
+                hintText: 'Véhicule, plaque, lieu, locataire…',
+                hintStyle: context.text.bodyMedium?.copyWith(
+                  color: context.palette.muted,
                 ),
-                style: const TextStyle(fontSize: 15.5),
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                isCollapsed: true,
               ),
+              style: context.text.bodyMedium,
             ),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: widget.resultCount == null
-                  ? const SizedBox.shrink()
-                  : Container(
-                      key: ValueKey(widget.resultCount),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: IncidentPalette.brown.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: widget.resultCount == null
+                ? const SizedBox.shrink()
+                : StatusChip(
+                    key: ValueKey(widget.resultCount),
+                    label:
                         '${widget.resultCount} résultat${widget.resultCount == 1 ? '' : 's'}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: IncidentPalette.brown,
-                        ),
-                      ),
-                    ),
-            ),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
-              child: hasText
-                  ? IconButton(
-                      key: const ValueKey('clear'),
-                      tooltip: 'Effacer',
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: _clear,
-                    )
-                  : const SizedBox(key: ValueKey('none'), width: 12),
+                    color: AppColors.brand,
+                  ),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
+            child: hasText
+                ? IconButton(
+                    key: const ValueKey('clear'),
+                    tooltip: 'Effacer',
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    onPressed: _clear,
+                  )
+                : const SizedBox(key: ValueKey('none'), width: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Navy square opening the follow-up dashboard (orange in dark mode).
+class _StatsButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _StatsButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = context.isDark ? AppColors.brand : AppColors.ink;
+    return Tooltip(
+      message: 'Suivi des incidents',
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadius.md + 2),
+          boxShadow: [
+            BoxShadow(
+              color: bg.withValues(alpha: 0.3),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
             ),
           ],
+        ),
+        child: Material(
+          color: bg,
+          borderRadius: BorderRadius.circular(AppRadius.md + 2),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.md + 2),
+            onTap: onTap,
+            child: const SizedBox(
+              width: 52,
+              height: 52,
+              child: Icon(Icons.insights_rounded, color: Colors.white),
+            ),
+          ),
         ),
       ),
     );
@@ -577,25 +541,25 @@ class _SwipeHint extends StatefulWidget {
 class _SwipeHintState extends State<_SwipeHint> {
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final next = widget.status.next;
     return AnimatedSize(
       duration: const Duration(milliseconds: 250),
       child: _SwipeHint.dismissed
           ? const SizedBox(width: double.infinity)
           : Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
               decoration: BoxDecoration(
-                color: IncidentPalette.brown.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
+                color: context.palette.surfaceAlt,
+                borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.swipe_rounded,
-                    size: 20,
-                    color: IncidentPalette.brown,
+                  const IconBadge(
+                    icon: Icons.swipe_rounded,
+                    color: AppColors.brand,
+                    size: 32,
+                    iconSize: 17,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -603,12 +567,16 @@ class _SwipeHintState extends State<_SwipeHint> {
                       next != null
                           ? 'Glissez → pour passer « ${next.label} », ← pour supprimer. Appui long : plus d\'actions.'
                           : 'Glissez ← pour supprimer. Appui long : plus d\'actions.',
-                      style: TextStyle(fontSize: 12.5, color: scheme.onSurface),
+                      style: context.text.bodySmall,
                     ),
                   ),
                   IconButton(
                     visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.close_rounded, size: 18),
+                    icon: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: context.palette.muted,
+                    ),
                     onPressed: () =>
                         setState(() => _SwipeHint.dismissed = true),
                   ),
@@ -641,7 +609,7 @@ class _SwipeableIncidentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final next = item.incident.status.next;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Dismissible(
         key: ValueKey('dismiss-${item.incident.id}'),
         direction: next == null
@@ -662,7 +630,7 @@ class _SwipeableIncidentCard extends StatelessWidget {
                 alignStart: true,
               ),
         secondaryBackground: const _SwipeBackground(
-          color: IncidentPalette.danger,
+          color: AppColors.danger,
           icon: Icons.delete_outline_rounded,
           label: 'Supprimer',
           alignStart: false,
@@ -698,16 +666,13 @@ class _SwipeBackground extends StatelessWidget {
       const SizedBox(width: 8),
       Text(
         label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-        ),
+        style: context.text.labelLarge?.copyWith(color: Colors.white),
       ),
     ];
     return Container(
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 24),
       alignment: alignStart ? Alignment.centerLeft : Alignment.centerRight,
@@ -720,7 +685,8 @@ class _SwipeBackground extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Incident card
+// Incident card (AppCard): type badge, vehicle, status, place / date, renter,
+// description and photos.
 // ─────────────────────────────────────────────────────────────────────────────
 class _IncidentCard extends StatelessWidget {
   final IncidentView item;
@@ -735,118 +701,92 @@ class _IncidentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final inc = item.incident;
-    final scheme = Theme.of(context).colorScheme;
-    final muted = TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant);
+    final muted = context.text.bodySmall!;
 
-    return Material(
-      color: scheme.surface,
-      elevation: 0,
-      borderRadius: BorderRadius.circular(20),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: scheme.outlineVariant.withValues(alpha: 0.7),
-            ),
+    return AppCard(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Hero(
+                tag: incidentHeroTag(inc.id!),
+                child: IncidentTypeBadge(type: inc.type, size: 46),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.vehicleLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.text.titleSmall,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${inc.type.label} #${inc.id}',
+                      style: context.text.labelMedium?.copyWith(
+                        color: inc.type.color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              IncidentStatusPill(status: inc.status),
+            ],
           ),
-          child: IntrinsicHeight(
+          const SizedBox(height: 12),
+          Text(
+            inc.description,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: context.text.bodyMedium,
+          ),
+          if (inc.photos.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _PhotoThumbs(photos: inc.photos),
+          ],
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: context.palette.surfaceAlt,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Hero(
-                          tag: incidentHeroTag(inc.id!),
-                          child: IncidentTypeBadge(type: inc.type),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      '${inc.type.label} #${inc.id}',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: inc.type.color,
-                                        letterSpacing: 0.3,
-                                      ),
-                                    ),
-                                  ),
-                                  IncidentStatusPill(status: inc.status),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                item.vehicleLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 15.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 12,
-                                runSpacing: 4,
-                                children: [
-                                  _Meta(
-                                    icon: Icons.event_rounded,
-                                    text: relativeDate(inc.date),
-                                    style: muted,
-                                  ),
-                                  _Meta(
-                                    icon: Icons.place_rounded,
-                                    text: inc.place,
-                                    style: muted,
-                                  ),
-                                ],
-                              ),
-                              if (item.clientName != null) ...[
-                                const SizedBox(height: 6),
-                                _Meta(
-                                  icon: Icons.person_rounded,
-                                  text: item.clientName!,
-                                  style: muted.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 6),
-                              Text(
-                                inc.description,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: muted,
-                              ),
-                              if (inc.photos.isNotEmpty) ...[
-                                const SizedBox(height: 10),
-                                _PhotoThumbs(photos: inc.photos),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                  child: _Meta(
+                    icon: Icons.place_rounded,
+                    text: inc.place,
+                    style: muted,
                   ),
                 ),
+                const SizedBox(width: 10),
+                _Meta(
+                  icon: Icons.event_rounded,
+                  text: relativeDate(inc.date),
+                  style: muted,
+                ),
+                if (item.clientName != null) ...[
+                  const SizedBox(width: 10),
+                  _Meta(
+                    icon: Icons.person_rounded,
+                    text: item.clientName!,
+                    style: muted.copyWith(fontWeight: FontWeight.w600),
+                    maxWidth: 110,
+                  ),
+                ],
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -859,7 +799,6 @@ class _PhotoThumbs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final shown = photos.take(3).toList();
     final extra = photos.length - shown.length;
     return Row(
@@ -868,7 +807,7 @@ class _PhotoThumbs extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(right: 6),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
               child: CarImage(fileName: p, width: 46, height: 46),
             ),
           ),
@@ -878,13 +817,10 @@ class _PhotoThumbs extends StatelessWidget {
             height: 46,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
+              color: context.palette.surfaceAlt,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
-            child: Text(
-              '+$extra',
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
+            child: Text('+$extra', style: context.text.labelLarge),
           ),
       ],
     );
@@ -895,21 +831,29 @@ class _Meta extends StatelessWidget {
   final IconData icon;
   final String text;
   final TextStyle style;
-  const _Meta({required this.icon, required this.text, required this.style});
+  final double maxWidth;
+  const _Meta({
+    required this.icon,
+    required this.text,
+    required this.style,
+    this.maxWidth = 160,
+  });
 
   @override
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      Icon(icon, size: 14, color: style.color),
-      const SizedBox(width: 3),
-      ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 160),
-        child: Text(
-          text,
-          style: style,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+      Icon(icon, size: 14, color: context.palette.muted),
+      const SizedBox(width: 4),
+      Flexible(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: Text(
+            text,
+            style: style,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
     ],
@@ -922,46 +866,15 @@ class _EmptyIllustration extends StatelessWidget {
   const _EmptyIllustration({required this.filtered, required this.status});
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = filtered ? scheme.outline : status.color;
-    return Column(
-      children: [
-        Container(
-          width: 110,
-          height: 110,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          alignment: Alignment.center,
-          child: Icon(
-            filtered ? Icons.search_off_rounded : status.icon,
-            size: 50,
-            color: color,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          filtered
-              ? 'Aucun résultat'
-              : 'Aucun incident ${status.label.toLowerCase()}',
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 6),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Text(
-            filtered
-                ? 'Essayez un autre mot-clé ou un autre type.'
-                : status == IncidentStatus.resolu
-                ? 'Les incidents résolus apparaîtront ici.'
-                : 'Tout roule ! Appuyez sur « Déclarer » pour signaler un problème.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: scheme.onSurfaceVariant),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => EmptyState(
+    icon: filtered ? Icons.search_off_rounded : status.icon,
+    title: filtered
+        ? 'Aucun résultat'
+        : 'Aucun incident ${status.label.toLowerCase()}',
+    message: filtered
+        ? 'Essayez un autre mot-clé ou un autre type.'
+        : status == IncidentStatus.resolu
+        ? 'Les incidents résolus apparaîtront ici.'
+        : 'Tout roule ! Appuyez sur « Déclarer » pour signaler un problème.',
+  );
 }

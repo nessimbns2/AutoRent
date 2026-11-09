@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../app/theme.dart';
 import '../../core/constants/strings.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/shared_widgets.dart';
+import '../../core/widgets/status_chips.dart';
 import '../../models/enums.dart';
 import '../../models/maintenance.dart';
 import '../../models/vehicle.dart';
@@ -31,7 +33,7 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
   final _vehicleRepo = VehicleRepository();
 
   int? _selectedVehicleId;
-  String? _selectedType;
+  String _selectedType = Strings.maintenanceTypes.first;
   DateTime _date = DateTime.now();
   final _dateController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -64,10 +66,6 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
         _descriptionController.text = _existing!.description ?? '';
         _status = _existing!.status;
       }
-    } else {
-      if (_selectedType == null && Strings.maintenanceTypes.isNotEmpty) {
-        _selectedType = Strings.maintenanceTypes.first;
-      }
     }
     if (mounted) setState(() => _loading = false);
   }
@@ -85,6 +83,7 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
       initialDate: _date,
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      helpText: "Date de l'intervention",
     );
     if (picked != null) {
       setState(() {
@@ -101,19 +100,17 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
       return;
     }
     setState(() => _saving = true);
-
     try {
       final desc = _descriptionController.text.trim();
       final maintenance = Maintenance(
         id: _existing?.id,
         vehicleId: _selectedVehicleId!,
-        type: _selectedType!,
+        type: _selectedType,
         date: _date,
         description: desc.isEmpty ? null : desc,
         status: _status,
         createdAt: _existing?.createdAt ?? DateTime.now(),
       );
-
       if (_isEdit) {
         await _maintenanceRepo.update(maintenance);
         if (!mounted) return;
@@ -132,25 +129,29 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: LoadingView());
-
     final lockVehicle = widget.vehicleId != null && !_isEdit;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEdit ? "Modifier l'entretien" : 'Planifier un entretien'),
+        title:
+            Text(_isEdit ? "Modifier l'entretien" : 'Planifier un entretien'),
       ),
-      body: SafeArea(
-        child: ResponsiveCenter(
-          maxWidth: 750,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Form(
-            key: _formKey,
-            child: Column(
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          children: [
+            FormSection(
+              title: 'Véhicule',
+              icon: Icons.directions_car_rounded,
               children: [
                 DropdownButtonFormField<int>(
                   initialValue: _selectedVehicleId,
-                  decoration: const InputDecoration(labelText: 'Véhicule'),
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Véhicule concerné',
+                    prefixIcon: Icon(Icons.directions_car_outlined),
+                  ),
                   items: [
                     for (final v in _vehicles)
                       DropdownMenuItem(
@@ -163,68 +164,124 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
                       : (id) => setState(() => _selectedVehicleId = id),
                   validator: (v) => v == null ? 'Choisissez un véhicule' : null,
                 ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedType,
-                  decoration: const InputDecoration(labelText: "Type d'intervention"),
-                  items: [
+              ],
+            ),
+            FormSection(
+              title: "Type d'intervention",
+              icon: Icons.handyman_rounded,
+              color: AppColors.teal,
+              children: [
+                GridView.count(
+                  crossAxisCount: 3,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 1.15,
+                  children: [
                     for (final t in Strings.maintenanceTypes)
-                      DropdownMenuItem(value: t, child: Text(t)),
+                      _TypeOption(
+                        label: t,
+                        icon: maintenanceTypeIcon(t),
+                        selected: _selectedType == t,
+                        onTap: () => setState(() => _selectedType = t),
+                      ),
                   ],
-                  onChanged: (t) => setState(() => _selectedType = t),
-                  validator: (v) =>
-                      v == null ? "Choisissez un type d'entretien" : null,
                 ),
-                const SizedBox(height: 12),
+              ],
+            ),
+            FormSection(
+              title: 'Planification',
+              icon: Icons.event_rounded,
+              color: AppColors.info,
+              children: [
                 TextFormField(
                   controller: _dateController,
                   readOnly: true,
                   decoration: const InputDecoration(
                     labelText: 'Date prévue',
-                    suffixIcon: Icon(Icons.calendar_today),
+                    prefixIcon: Icon(Icons.calendar_today_rounded),
                   ),
                   onTap: _pickDate,
                   validator: (v) => Validators.required(v, 'La date'),
                 ),
-                const SizedBox(height: 12),
                 TextFormField(
                   controller: _descriptionController,
                   maxLines: 3,
                   decoration: const InputDecoration(
-                    labelText: 'Description / Observations (facultatif)',
+                    labelText: 'Observations (facultatif)',
+                    alignLabelWithHint: true,
                   ),
                 ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<MaintenanceStatus>(
-                  initialValue: _status,
-                  decoration: const InputDecoration(labelText: 'Statut'),
-                  items: [
-                    for (final s in MaintenanceStatus.values)
-                      DropdownMenuItem(value: s, child: Text(s.label)),
-                  ],
-                  onChanged: (s) {
-                    if (s != null) setState(() => _status = s);
-                  },
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _save,
-                    child: _saving
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text(Strings.save),
-                  ),
-                ),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final s in MaintenanceStatus.values)
+                    ChoiceChip(
+                      label: Text(s.label),
+                      selected: _status == s,
+                      showCheckmark: false,
+                      selectedColor:
+                          maintenanceStatusColor(s).withValues(alpha: 0.15),
+                      labelStyle: context.text.labelMedium?.copyWith(
+                          color:
+                              _status == s ? maintenanceStatusColor(s) : null),
+                      onSelected: (_) => setState(() => _status = s),
+                    ),
+                ]),
               ],
             ),
-          ),
+          ],
         ),
       ),
-    ),
-  );
+      bottomNavigationBar: BottomActionBar(
+        child: PrimaryButton(
+          label: _isEdit ? 'Enregistrer' : "Planifier l'entretien",
+          icon: Icons.check_rounded,
+          loading: _saving,
+          onPressed: _save,
+        ),
+      ),
+    );
+  }
 }
+
+class _TypeOption extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+  const _TypeOption({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.teal.withValues(alpha: 0.12)
+                : context.palette.surfaceAlt,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(
+                color: selected ? AppColors.teal : Colors.transparent,
+                width: 1.6),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon,
+                  color: selected ? AppColors.teal : context.palette.muted),
+              const SizedBox(height: 6),
+              Text(label,
+                  style: context.text.labelMedium?.copyWith(
+                      color: selected ? AppColors.teal : null)),
+            ],
+          ),
+        ),
+      );
 }

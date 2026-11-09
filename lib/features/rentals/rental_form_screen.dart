@@ -1,14 +1,17 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
+import '../../app/theme.dart';
 import '../../core/constants/strings.dart';
 import '../../core/session/session_manager.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/widgets/shared_widgets.dart';
+import '../../core/widgets/status_chips.dart';
 import '../../models/client.dart';
 import '../../models/enums.dart';
 import '../../models/rental.dart';
@@ -43,8 +46,9 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
 
   int? _selectedClientId;
   int? _selectedVehicleId;
-  DateTime _startDate = DateTime.now();
-  DateTime _endDate = DateTime.now().add(const Duration(days: 1));
+  DateTime _startDate = DateUtils.dateOnly(DateTime.now());
+  DateTime _endDate =
+      DateUtils.dateOnly(DateTime.now()).add(const Duration(days: 1));
   RentalStatus _status = RentalStatus.reservee;
 
   List<Client> _clients = [];
@@ -57,12 +61,9 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
 
   int get _days => max(1, _endDate.difference(_startDate).inDays);
 
-  Vehicle? get _currentVehicle {
-    if (_selectedVehicleId == null) return null;
-    return _availableVehicles
-        .where((v) => v.id == _selectedVehicleId)
-        .firstOrNull;
-  }
+  Vehicle? get _currentVehicle => _selectedVehicleId == null
+      ? null
+      : _availableVehicles.where((v) => v.id == _selectedVehicleId).firstOrNull;
 
   double get _totalPrice {
     final v = _currentVehicle;
@@ -108,8 +109,9 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
       _endDate,
       excludeRentalId: widget.rentalId,
     );
-    // If the currently chosen vehicle is not in list but is existing, keep it
-    if (_selectedVehicleId != null &&
+    // Keep the vehicle of an edited contract selectable.
+    if (_isEdit &&
+        _selectedVehicleId != null &&
         !list.any((v) => v.id == _selectedVehicleId)) {
       final v = await _vehicleRepo.getById(_selectedVehicleId!);
       if (v != null) list.insert(0, v);
@@ -130,32 +132,36 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
       context: context,
       firstDate: _isEdit
           ? _startDate.subtract(const Duration(days: 365))
-          : DateTime.now().subtract(const Duration(days: 1)),
+          : DateUtils.dateOnly(DateTime.now()),
       lastDate: DateTime.now().add(const Duration(days: 730)),
       initialDateRange: DateTimeRange(start: _startDate, end: _endDate),
+      helpText: 'Période de location',
+      saveText: 'Valider',
     );
-
     if (range != null) {
       setState(() {
         _startDate = range.start;
-        _endDate = range.end;
+        _endDate = range.end.isAtSameMomentAs(range.start)
+            ? range.start.add(const Duration(days: 1))
+            : range.end;
       });
       await _updateAvailableVehicles();
     }
   }
 
+  Future<void> _setDuration(int days) async {
+    setState(() => _endDate = _startDate.add(Duration(days: days)));
+    await _updateAvailableVehicles();
+  }
+
   Future<void> _createNewClient() async {
-    final saved = await Navigator.pushNamed(
-      context,
-      Routes.clientForm,
-    );
+    final saved = await Navigator.pushNamed(context, Routes.clientForm);
     if (saved == true && mounted) {
       final list = await _clientRepo.getAll();
+      final newest = [...list]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       setState(() {
         _clients = list;
-        if (list.isNotEmpty) {
-          _selectedClientId = list.last.id;
-        }
+        if (newest.isNotEmpty) _selectedClientId = newest.first.id;
       });
     }
   }
@@ -173,7 +179,6 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
 
     setState(() => _saving = true);
     try {
-      // 1. Vehicle availability verification
       final vehicle = await _vehicleRepo.getById(_selectedVehicleId!);
       if (vehicle == null || !vehicle.available) {
         throw const AppException(Strings.vehicleNotAvailable);
@@ -181,25 +186,19 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
       if (await _maintenanceRepo.hasActiveMaintenance(_selectedVehicleId!)) {
         throw const AppException(Strings.vehicleInMaintenance);
       }
-
-      // 2. Overlap check
       final overlap = await _rentalRepo.hasOverlap(
         _selectedVehicleId!,
         _startDate,
         _endDate,
         excludeId: widget.rentalId,
       );
-      if (overlap) {
-        throw const AppException(Strings.rentalOverlap);
-      }
-
-      final currentUserId = SessionManager.instance.currentUser?.id;
+      if (overlap) throw const AppException(Strings.rentalOverlap);
 
       final rental = Rental(
         id: _existing?.id,
         clientId: _selectedClientId!,
         vehicleId: _selectedVehicleId!,
-        userId: _existing?.userId ?? currentUserId,
+        userId: _existing?.userId ?? SessionManager.instance.currentUser?.id,
         startDate: _startDate,
         endDate: _endDate,
         totalPrice: _totalPrice,
@@ -238,183 +237,295 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
       appBar: AppBar(
         title: Text(_isEdit ? 'Modifier la location' : 'Nouvelle location'),
       ),
-      body: SafeArea(
-        child: ResponsiveCenter(
-          maxWidth: 750,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 1. Locataire
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          initialValue: _selectedClientId,
-                          decoration:
-                              const InputDecoration(labelText: 'Locataire'),
-                          items: [
-                            for (final c in _clients)
-                              DropdownMenuItem(
-                                value: c.id,
-                                child: Text(
-                                  c.fullName,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                          ],
-                          onChanged: (id) =>
-                              setState(() => _selectedClientId = id),
-                          validator: (v) =>
-                              v == null ? 'Choisissez un locataire' : null,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: IconButton.filledTonal(
-                          icon: const Icon(Icons.person_add),
-                          onPressed: _createNewClient,
-                          tooltip: 'Nouveau locataire',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 2. Dates
-                  InkWell(
-                    onTap: _pickDates,
-                    child: InputDecorator(
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          children: [
+            // 1. Client ------------------------------------------------------
+            FormSection(
+              title: '1 · Locataire',
+              icon: Icons.person_rounded,
+              children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      initialValue: _selectedClientId,
+                      isExpanded: true,
                       decoration: const InputDecoration(
-                        labelText: 'Période de location',
-                        suffixIcon: Icon(Icons.date_range),
+                        labelText: 'Choisir un locataire',
+                        prefixIcon: Icon(Icons.badge_outlined),
                       ),
-                      child: Text(
-                        '${formatDate(_startDate)} → ${formatDate(_endDate)} ($_days jour(s))',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
+                      items: [
+                        for (final c in _clients)
+                          DropdownMenuItem(
+                            value: c.id,
+                            child: Text(c.fullName,
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                      onChanged: (id) =>
+                          setState(() => _selectedClientId = id),
+                      validator: (v) =>
+                          v == null ? 'Choisissez un locataire' : null,
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  // 3. Véhicule
-                  DropdownButtonFormField<int>(
-                    initialValue: _selectedVehicleId,
-                    decoration: const InputDecoration(labelText: 'Véhicule'),
-                    items: [
-                      for (final v in _availableVehicles)
-                        DropdownMenuItem(
-                          value: v.id,
-                          child: Text(
-                            '${v.label} (${formatMoney(v.pricePerDay)}/j)',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                    onChanged: (id) => setState(() => _selectedVehicleId = id),
-                    validator: (v) => v == null ? 'Choisissez un véhicule' : null,
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    height: 56,
+                    width: 56,
+                    child: IconButton.filledTonal(
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppColors.brand.withValues(alpha: 0.12),
+                        foregroundColor: AppColors.brand,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.md)),
+                      ),
+                      icon: const Icon(Icons.person_add_alt_1_rounded),
+                      onPressed: _createNewClient,
+                      tooltip: 'Nouveau locataire',
+                    ),
                   ),
-                  if (_availableVehicles.isEmpty)
+                ]),
+              ],
+            ),
+
+            // 2. Period ------------------------------------------------------
+            FormSection(
+              title: '2 · Période',
+              icon: Icons.date_range_rounded,
+              color: AppColors.info,
+              children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  onTap: _pickDates,
+                  child: Row(children: [
+                    Expanded(
+                        child: _DateBox(label: 'Départ', date: _startDate)),
                     Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        'Aucun véhicule disponible sur cette période.',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context).colorScheme.error),
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Column(children: [
+                        const Icon(Icons.arrow_forward_rounded,
+                            color: AppColors.info),
+                        Text('$_days j',
+                            style: context.text.labelSmall
+                                ?.copyWith(color: AppColors.info)),
+                      ]),
                     ),
-                  const SizedBox(height: 16),
+                    Expanded(child: _DateBox(label: 'Retour', date: _endDate)),
+                  ]),
+                ),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final d in const [1, 3, 7, 14, 30])
+                    ChoiceChip(
+                      label: Text(d == 7
+                          ? '1 semaine'
+                          : d == 14
+                              ? '2 semaines'
+                              : d == 30
+                                  ? '1 mois'
+                                  : '$d jour${d > 1 ? 's' : ''}'),
+                      selected: _days == d,
+                      showCheckmark: false,
+                      selectedColor: AppColors.info.withValues(alpha: 0.15),
+                      labelStyle: context.text.labelMedium?.copyWith(
+                          color: _days == d ? AppColors.info : null),
+                      onSelected: (_) => _setDuration(d),
+                    ),
+                ]),
+              ],
+            ),
 
-                  // 4. Total Price preview card
-                  Card(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primaryContainer
-                        .withValues(alpha: 0.5),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Montant estimé',
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                                Text(
-                                  '$_days jour(s) × ${formatMoney(_currentVehicle?.pricePerDay ?? 0)}',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                formatMoney(_totalPrice),
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleLarge
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: Theme.of(context).colorScheme.primary,
-                                    ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+            // 3. Vehicle -----------------------------------------------------
+            FormSection(
+              title: '3 · Véhicule',
+              icon: Icons.directions_car_rounded,
+              color: AppColors.teal,
+              children: [
+                if (_availableVehicles.isEmpty)
+                  const InfoBanner(
+                    icon: Icons.event_busy_rounded,
+                    color: AppColors.danger,
+                    text:
+                        'Aucun véhicule disponible sur cette période. Essayez d\'autres dates.',
+                  )
+                else
+                  SizedBox(
+                    height: 168,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _availableVehicles.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 10),
+                      itemBuilder: (context, i) {
+                        final v = _availableVehicles[i];
+                        return _VehicleOption(
+                          vehicle: v,
+                          selected: v.id == _selectedVehicleId,
+                          onTap: () =>
+                              setState(() => _selectedVehicleId = v.id),
+                        );
+                      },
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                // 5. Statut (edit only)
-                if (_isEdit) ...[
-                  DropdownButtonFormField<RentalStatus>(
-                    initialValue: _status,
-                    decoration: const InputDecoration(labelText: 'Statut'),
-                    items: [
-                      for (final s in RentalStatus.values)
-                        DropdownMenuItem(value: s, child: Text(s.label)),
-                    ],
-                    onChanged: (s) {
-                      if (s != null) setState(() => _status = s);
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _save,
-                    child: _saving
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text(Strings.save),
-                  ),
+                Text(
+                  '${_availableVehicles.length} véhicule(s) libre(s) du ${formatDayMonth(_startDate)} au ${formatDayMonth(_endDate)}',
+                  style: context.text.bodySmall,
                 ),
               ],
             ),
-          ),
+
+            // 4. Status (edit only) -----------------------------------------
+            if (_isEdit)
+              FormSection(
+                title: 'Statut',
+                icon: Icons.flag_rounded,
+                color: AppColors.violet,
+                children: [
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final s in RentalStatus.values)
+                      ChoiceChip(
+                        label: Text(s.label),
+                        selected: _status == s,
+                        showCheckmark: false,
+                        selectedColor:
+                            rentalStatusColor(s).withValues(alpha: 0.15),
+                        labelStyle: context.text.labelMedium?.copyWith(
+                            color: _status == s ? rentalStatusColor(s) : null),
+                        onSelected: (_) => setState(() => _status = s),
+                      ),
+                  ]),
+                ],
+              ),
+          ],
         ),
       ),
-    ),
-  );
+      bottomNavigationBar: BottomActionBar(
+        child: Row(children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  _currentVehicle == null
+                      ? 'Total estimé'
+                      : '$_days j × ${_currentVehicle!.pricePerDay.toStringAsFixed(0)} DT',
+                  style: context.text.bodySmall),
+              Text(formatMoneyShort(_totalPrice),
+                  style: context.text.titleLarge
+                      ?.copyWith(color: AppColors.brand)),
+            ],
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: PrimaryButton(
+              label: _isEdit ? 'Enregistrer' : 'Confirmer',
+              icon: Icons.check_rounded,
+              loading: _saving,
+              onPressed: _save,
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
 }
+
+class _DateBox extends StatelessWidget {
+  final String label;
+  final DateTime date;
+  const _DateBox({required this.label, required this.date});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: context.palette.surfaceAlt,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: context.text.bodySmall),
+            const SizedBox(height: 2),
+            Text(formatShortDate(date), style: context.text.titleSmall),
+            Text(relativeDay(date),
+                style: context.text.labelSmall
+                    ?.copyWith(color: context.palette.muted)),
+          ],
+        ),
+      );
+}
+
+class _VehicleOption extends StatelessWidget {
+  final Vehicle vehicle;
+  final bool selected;
+  final VoidCallback onTap;
+  const _VehicleOption({
+    required this.vehicle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 150,
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: context.colors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.lg - 2),
+            border: Border.all(
+              color: selected ? AppColors.brand : context.palette.border,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Stack(fit: StackFit.expand, children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    child: CarImage(
+                      fileName: vehicle.photos.isNotEmpty
+                          ? vehicle.photos.first
+                          : null,
+                      seed: vehicle.id ?? 0,
+                    ),
+                  ),
+                  if (selected)
+                    const Positioned(
+                      right: 6,
+                      top: 6,
+                      child: CircleAvatar(
+                        radius: 11,
+                        backgroundColor: AppColors.brand,
+                        child: Icon(Icons.check_rounded,
+                            size: 14, color: Colors.white),
+                      ),
+                    ),
+                ]),
+              ),
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${vehicle.brand} ${vehicle.model}',
+                        style: context.text.labelMedium,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                    Text('${vehicle.pricePerDay.toStringAsFixed(0)} DT/jour',
+                        style: context.text.labelSmall
+                            ?.copyWith(color: AppColors.brand)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 }

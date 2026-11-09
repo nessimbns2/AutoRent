@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme.dart';
+
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/shared_widgets.dart';
 import '../../../models/enums.dart';
@@ -135,7 +137,7 @@ Future<bool> confirmDeleteIncident(
 ) => showIncidentConfirmSheet(
   context,
   icon: Icons.delete_outline_rounded,
-  color: IncidentPalette.danger,
+  color: AppColors.danger,
   title: 'Supprimer ${inc.type.label.toLowerCase()} #${inc.id} ?',
   message: inc.photos.isEmpty
       ? 'Cette déclaration sera définitivement supprimée.'
@@ -152,7 +154,6 @@ Future<IncidentStatus?> showStatusPickerSheet(
 ) => _showSheet<IncidentStatus>(
   context,
   builder: (ctx) {
-    final scheme = Theme.of(ctx).colorScheme;
     const descriptions = {
       IncidentStatus.enAttente: 'Déclaré, pas encore pris en charge',
       IncidentStatus.enCours: 'Prise en charge en cours (dépannage, garage…)',
@@ -180,7 +181,7 @@ Future<IncidentStatus?> showStatusPickerSheet(
                 child: Material(
                   color: s == current
                       ? s.color.withValues(alpha: 0.12)
-                      : scheme.surfaceContainerLow,
+                      : context.palette.surfaceAlt,
                   borderRadius: BorderRadius.circular(18),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(18),
@@ -190,7 +191,7 @@ Future<IncidentStatus?> showStatusPickerSheet(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
-                          color: s == current ? s.color : scheme.outlineVariant,
+                          color: s == current ? s.color : context.palette.border,
                           width: s == current ? 2 : 1,
                         ),
                       ),
@@ -223,7 +224,7 @@ Future<IncidentStatus?> showStatusPickerSheet(
                                   descriptions[s]!,
                                   style: TextStyle(
                                     fontSize: 12.5,
-                                    color: scheme.onSurfaceVariant,
+                                    color: context.palette.muted,
                                   ),
                                 ),
                               ],
@@ -256,7 +257,6 @@ Future<IncidentAction?> showIncidentActionsSheet(
   context,
   builder: (ctx) {
     final inc = view.incident;
-    final scheme = Theme.of(ctx).colorScheme;
     Widget action(
       IncidentAction a,
       IconData icon,
@@ -270,10 +270,10 @@ Future<IncidentAction?> showIncidentActionsSheet(
         height: 40,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: (color ?? IncidentPalette.brown).withValues(alpha: 0.10),
+          color: (color ?? AppColors.brand).withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(icon, size: 20, color: color ?? IncidentPalette.brown),
+        child: Icon(icon, size: 20, color: color ?? AppColors.brand),
       ),
       title: Text(
         label,
@@ -307,7 +307,7 @@ Future<IncidentAction?> showIncidentActionsSheet(
                       view.vehicleLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: scheme.onSurfaceVariant),
+                      style: TextStyle(color: context.palette.muted),
                     ),
                   ],
                 ),
@@ -329,7 +329,7 @@ Future<IncidentAction?> showIncidentActionsSheet(
           IncidentAction.delete,
           Icons.delete_outline_rounded,
           'Supprimer',
-          color: IncidentPalette.danger,
+          color: AppColors.danger,
         ),
         const SizedBox(height: 12),
       ],
@@ -364,7 +364,6 @@ class _VehiclePickerState extends State<_VehiclePicker> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final q = _q.trim().toLowerCase();
     final list = q.isEmpty
         ? widget.vehicles
@@ -406,7 +405,7 @@ class _VehiclePickerState extends State<_VehiclePicker> {
                 ? Center(
                     child: Text(
                       'Aucun véhicule trouvé',
-                      style: TextStyle(color: scheme.onSurfaceVariant),
+                      style: TextStyle(color: context.palette.muted),
                     ),
                   )
                 : ListView.builder(
@@ -423,8 +422,8 @@ class _VehiclePickerState extends State<_VehiclePicker> {
                           padding: const EdgeInsets.only(bottom: 10),
                           child: Material(
                             color: selected
-                                ? scheme.primaryContainer.withValues(alpha: 0.5)
-                                : scheme.surfaceContainerLow,
+                                ? AppColors.brand.withValues(alpha: 0.08)
+                                : context.palette.surfaceAlt,
                             borderRadius: BorderRadius.circular(18),
                             clipBehavior: Clip.antiAlias,
                             child: InkWell(
@@ -466,7 +465,7 @@ class _VehiclePickerState extends State<_VehiclePicker> {
                                               borderRadius:
                                                   BorderRadius.circular(6),
                                               border: Border.all(
-                                                color: scheme.outline,
+                                                color: context.palette.muted,
                                               ),
                                             ),
                                             child: Text(
@@ -484,7 +483,7 @@ class _VehiclePickerState extends State<_VehiclePicker> {
                                     if (selected)
                                       Icon(
                                         Icons.check_circle_rounded,
-                                        color: scheme.primary,
+                                        color: AppColors.brand,
                                       ),
                                   ],
                                 ),

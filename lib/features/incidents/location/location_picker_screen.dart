@@ -1,12 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../../app/theme.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../core/utils/app_exception.dart';
 import '../../../core/utils/ui_helpers.dart';
-import '../widgets/incident_ui.dart';
 import 'geocoding_service.dart';
 import 'incident_map.dart';
 
@@ -199,8 +200,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                   ? 'Lieu de l\'incident'
                   : 'Choisir l\'emplacement'),
         ),
-        backgroundColor: IncidentPalette.brown,
-        foregroundColor: Colors.white,
       ),
       body: Stack(
         children: [
@@ -280,8 +279,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                           Icon(
                             Icons.search_rounded,
                             color: _searchFocus.hasFocus
-                                ? IncidentPalette.brown
-                                : scheme.onSurfaceVariant,
+                                ? AppColors.brand
+                                : context.palette.muted,
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -353,7 +352,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                                     child: Text(
                                       _searchError!,
                                       style: TextStyle(
-                                        color: scheme.onSurfaceVariant,
+                                        color: context.palette.muted,
                                       ),
                                     ),
                                   )
@@ -370,7 +369,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                                       return ListTile(
                                         leading: const Icon(
                                           Icons.place_outlined,
-                                          color: IncidentPalette.brown,
+                                          color: AppColors.brand,
                                         ),
                                         title: Text(
                                           r.name,
@@ -404,7 +403,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 heroTag: 'my-position',
                 tooltip: 'Ma position',
                 backgroundColor: scheme.surface,
-                foregroundColor: IncidentPalette.brown,
+                foregroundColor: AppColors.brand,
                 onPressed: _locating ? null : () => _goToMyPosition(),
                 child: _locating
                     ? const SizedBox(
@@ -440,14 +439,14 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                             width: 40,
                             height: 40,
                             decoration: BoxDecoration(
-                              color: IncidentPalette.brown.withValues(
+                              color: AppColors.brand.withValues(
                                 alpha: 0.12,
                               ),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(
                               Icons.place_rounded,
-                              color: IncidentPalette.brown,
+                              color: AppColors.brand,
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -481,7 +480,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                                   ),
                                   style: TextStyle(
                                     fontSize: 12.5,
-                                    color: scheme.onSurfaceVariant,
+                                    color: context.palette.muted,
                                     fontFeatures: const [
                                       FontFeature.tabularFigures(),
                                     ],
@@ -496,7 +495,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                         const SizedBox(height: 14),
                         FilledButton.icon(
                           style: FilledButton.styleFrom(
-                            backgroundColor: IncidentPalette.brown,
+                            backgroundColor: AppColors.brand,
                             minimumSize: const Size.fromHeight(50),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),

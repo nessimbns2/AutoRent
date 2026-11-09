@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+
+import '../../../app/theme.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../widgets/incident_ui.dart';
 
 /// Tunis, used when no position is known yet.
 const tunisCenter = LatLng(36.8065, 10.1815);
@@ -25,7 +26,7 @@ class IncidentPin extends StatelessWidget {
   const IncidentPin({
     super.key,
     this.size = 46,
-    this.color = IncidentPalette.brown,
+    this.color = AppColors.brand,
   });
 
   @override
@@ -50,7 +51,7 @@ class IncidentMapPreview extends StatelessWidget {
     super.key,
     required this.point,
     this.height = 170,
-    this.pinColor = IncidentPalette.brown,
+    this.pinColor = AppColors.brand,
     this.onTap,
   });
 

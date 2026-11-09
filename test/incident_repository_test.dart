@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:autorent/core/database/database_helper.dart';
+import 'package:autorent/core/services/image_storage.dart';
 import 'package:autorent/models/enums.dart';
 import 'package:autorent/models/incident.dart';
 import 'package:autorent/repositories/incident_repository.dart';
@@ -9,12 +12,17 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// Tests run against a real SQLite database (via sqflite FFI) created from the
 /// app's schema + seed data, recreated before every test.
 ///
-/// Seed used here: vehicle 1 = Peugeot 208, vehicle 4 = Volkswagen Golf,
-/// rental 2 = Golf rented by "Trabelsi Mohamed" (en_cours), user 2 = agent.
+/// Seed used here: vehicle 1 = Suzuki Swift (128 TUN 4521), vehicle 2 = Škoda Fabia,
+/// rental 5 = Fabia rented by "Jaziri Karim" (en_cours), user 2 = agent.
 void main() {
   late IncidentRepository repo;
 
-  setUpAll(() {
+  setUpAll(() async {
+    // The demo data copies the bundled car photos into the photos folder.
+    TestWidgetsFlutterBinding.ensureInitialized();
+    await ImageStorage.init(
+      directory: Directory.systemTemp.createTempSync('autorent_test_'),
+    );
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfiNoIsolate;
   });
@@ -100,12 +108,12 @@ void main() {
   });
 
   test('getViewById includes vehicle, reporter and renter names', () async {
-    final id = await repo.insert(newIncident(vehicleId: 4, rentalId: 2));
+    final id = await repo.insert(newIncident(vehicleId: 2, rentalId: 5));
     final view = (await repo.getViewById(id))!;
 
-    expect(view.vehicleLabel, contains('Golf'));
+    expect(view.vehicleLabel, contains('Fabia'));
     expect(view.reporterName, 'Ben Ali Sami');
-    expect(view.clientName, 'Trabelsi Mohamed');
+    expect(view.clientName, 'Jaziri Karim');
   });
 
   test('getViewById has no renter when no rental is linked', () async {
@@ -199,27 +207,55 @@ void main() {
       expect(stats.byType.values.every((n) => n > 0), isTrue);
     });
 
-    test('upgrading a v1 database creates and backfills the history', () async {
-      // Turn the fresh database back into a v1 one.
+    test('upgrading a v1 database installs the new fleet with history', () async {
       var db = await DatabaseHelper.instance.database;
       await db.execute('DROP TABLE incident_history');
       await db.setVersion(1);
       await DatabaseHelper.instance.close();
 
-      db = await DatabaseHelper.instance.database; // runs onUpgrade 1 → 3
-      expect(await db.getVersion(), 3);
-      // One "declared" entry per existing incident, in its current status.
-      final rows = await db.rawQuery('''
-        SELECT h.from_statut, h.to_statut = i.statut AS same
-        FROM incident_history h JOIN incidents i ON i.id = h.incident_id
-      ''');
-      final incidents = await db.query('incidents');
-      expect(rows, hasLength(incidents.length));
-      expect(
-        rows.every((r) => r['from_statut'] == null && r['same'] == 1),
-        isTrue,
-      );
+      db = await DatabaseHelper.instance.database; // runs onUpgrade 1 → 4
+      expect(await db.getVersion(), 4);
+      expect(await db.query('vehicles'), hasLength(6));
+      final views = await repo.getViews();
+      expect(views, hasLength(7));
+      for (final v in views) {
+        expect(await repo.getHistory(v.incident.id!), isNotEmpty);
+      }
     });
+
+    test(
+      'upgrading an incident-branch v3 database replaces the old fleet',
+      () async {
+        var db = await DatabaseHelper.instance.database;
+        // A car of the old demo fleet, with an incident and its history.
+        final golf = await db.insert('vehicles', {
+          'marque': 'Volkswagen',
+          'modele': 'Golf',
+          'immatriculation': '999 TUN 9999',
+          'prix_par_jour': 100,
+          'created_at': DateTime(2026).toIso8601String(),
+        });
+        await repo.insert(newIncident(vehicleId: golf));
+        await db.setVersion(3);
+        await DatabaseHelper.instance.close();
+
+        db = await DatabaseHelper.instance.database; // runs onUpgrade 3 → 4
+        expect(await db.getVersion(), 4);
+        final cars = await db.query('vehicles');
+        expect(cars, hasLength(6));
+        expect(cars.any((r) => r['modele'] == 'Golf'), isFalse);
+        final history = await db.query('incident_history');
+        final seeded = await db.query('incidents');
+        expect(seeded, hasLength(7));
+        // No history row left from the removed incidents.
+        expect(
+          history.every(
+            (h) => seeded.any((i) => i['id'] == h['incident_id']),
+          ),
+          isTrue,
+        );
+      },
+    );
   });
 
   group('map position', () {
@@ -265,7 +301,7 @@ void main() {
     });
 
     test('update clears a rental link that no longer applies', () async {
-      final id = await repo.insert(newIncident(vehicleId: 4, rentalId: 2));
+      final id = await repo.insert(newIncident(vehicleId: 2, rentalId: 5));
       final inc = (await repo.getById(id))!;
       await repo.update(
         Incident(
@@ -288,12 +324,28 @@ void main() {
       expect(views.every((v) => v.incident.hasPosition), isTrue);
     });
 
-    test('upgrading a v2 database adds the position columns', () async {
+    test('upgrading main\'s v2 database keeps its data and adds the position '
+        'columns and a history entry per incident', () async {
       var db = await DatabaseHelper.instance.database;
-      // Rebuild "incidents" without the v3 columns, as a v2 database had it.
+      // main's v2: same fleet, but no history table and no position columns.
+      await db.execute('DROP TABLE incident_history');
       await db.execute('PRAGMA foreign_keys = OFF');
+      await db.execute('''
+        CREATE TABLE incidents_v2 (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          vehicle_id          INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE RESTRICT,
+          rental_id           INTEGER REFERENCES rentals(id) ON DELETE SET NULL,
+          reported_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          type                TEXT NOT NULL,
+          date                TEXT NOT NULL,
+          lieu                TEXT NOT NULL,
+          description         TEXT NOT NULL,
+          statut              TEXT NOT NULL DEFAULT 'en_attente',
+          created_at          TEXT NOT NULL
+        )
+      ''');
       await db.execute(
-        'CREATE TABLE incidents_v2 AS SELECT id, vehicle_id, rental_id, '
+        'INSERT INTO incidents_v2 SELECT id, vehicle_id, rental_id, '
         'reported_by_user_id, type, date, lieu, description, statut, '
         'created_at FROM incidents',
       );
@@ -302,8 +354,8 @@ void main() {
       await db.setVersion(2);
       await DatabaseHelper.instance.close();
 
-      db = await DatabaseHelper.instance.database; // runs onUpgrade 2 → 3
-      expect(await db.getVersion(), 3);
+      db = await DatabaseHelper.instance.database; // runs onUpgrade 2 → 4
+      expect(await db.getVersion(), 4);
       final cols = {
         for (final r in await db.rawQuery('PRAGMA table_info(incidents)'))
           r['name'],
@@ -313,6 +365,16 @@ void main() {
       final rows = await db.query('incidents');
       expect(rows, hasLength(7));
       expect(rows.every((r) => r['latitude'] == null), isTrue);
+      // One "declared" entry per incident, in its current status.
+      final h = await db.rawQuery('''
+        SELECT h.from_statut, h.to_statut = i.statut AS same
+        FROM incident_history h JOIN incidents i ON i.id = h.incident_id
+      ''');
+      expect(h, hasLength(7));
+      expect(
+        h.every((r) => r['from_statut'] == null && r['same'] == 1),
+        isTrue,
+      );
     });
   });
 
@@ -335,13 +397,13 @@ void main() {
     test('counts, rate, average resolution, top vehicles, activity', () async {
       final now = DateTime.now();
       final a = await repo.insert(
-        newIncident(vehicleId: 4).copyWith(
+        newIncident(vehicleId: 2).copyWith(
           type: IncidentType.accident,
           createdAt: now.subtract(const Duration(hours: 48)),
         ),
       );
       await repo.insert(
-        newIncident(vehicleId: 4)
+        newIncident(vehicleId: 2)
             .copyWith(createdAt: now.subtract(const Duration(hours: 1))),
       );
       final c = await repo.insert(
@@ -362,7 +424,7 @@ void main() {
       expect(s.last30Days, 2);
       expect(s.resolutionRate, closeTo(1 / 3, 1e-9));
       expect(s.averageResolution!.inMinutes, closeTo(48 * 60, 2));
-      expect(s.topVehicles.first.vehicleId, 4);
+      expect(s.topVehicles.first.vehicleId, 2);
       expect(s.topVehicles.first.count, 2);
       // Most recent first: the two status changes, then declarations.
       expect(s.recentActivity.first.entry.incidentId, c);
@@ -386,8 +448,8 @@ void main() {
       );
       accidentId = await repo.insert(
         newIncident(
-          vehicleId: 4,
-          rentalId: 2,
+          vehicleId: 2,
+          rentalId: 5,
           type: IncidentType.accident,
           place: 'Tunis',
           description: 'Choc arrière au feu rouge',
@@ -420,9 +482,9 @@ void main() {
     test('search by place, description, vehicle, plate and renter', () async {
       expect(ids(await repo.getViews(query: 'sousse')), [panneId]);
       expect(ids(await repo.getViews(query: 'feu rouge')), [accidentId]);
-      expect(ids(await repo.getViews(query: 'golf')), [accidentId]);
-      expect(ids(await repo.getViews(query: '123 TUN')), [panneId]);
-      expect(ids(await repo.getViews(query: 'Mohamed Trabelsi')), [accidentId]);
+      expect(ids(await repo.getViews(query: 'fabia')), [accidentId]);
+      expect(ids(await repo.getViews(query: '128 TUN')), [panneId]);
+      expect(ids(await repo.getViews(query: 'Karim Jaziri')), [accidentId]);
       expect(await repo.getViews(query: 'introuvable'), isEmpty);
     });
 

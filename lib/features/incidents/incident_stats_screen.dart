@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../app/theme.dart';
+
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
 import '../../core/widgets/shared_widgets.dart';
@@ -33,14 +35,8 @@ class _IncidentStatsScreenState extends State<IncidentStatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: scheme.surfaceContainerLowest,
-      appBar: AppBar(
-        title: const Text('Suivi des incidents'),
-        backgroundColor: IncidentPalette.brown,
-        foregroundColor: Colors.white,
-      ),
+      appBar: AppBar(title: const Text('Suivi des incidents')),
       body: FutureBuilder<IncidentStats>(
         future: _future,
         builder: (context, snap) {
@@ -62,13 +58,14 @@ class _IncidentStatsScreenState extends State<IncidentStatsScreen> {
               maxWidth: 850,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
                 children: [
                   animated(_HeroCard(stats: s)),
                   const SizedBox(height: 14),
                   animated(
                     IncidentSection(
                       icon: Icons.donut_large_rounded,
+                      iconColor: AppColors.info,
                       title: 'Répartition par statut',
                       child: _StatusBreakdown(stats: s),
                     ),
@@ -76,6 +73,7 @@ class _IncidentStatsScreenState extends State<IncidentStatsScreen> {
                   animated(
                     IncidentSection(
                       icon: Icons.category_rounded,
+                      iconColor: AppColors.violet,
                       title: 'Par type',
                       child: _TypeBreakdown(stats: s),
                     ),
@@ -83,6 +81,7 @@ class _IncidentStatsScreenState extends State<IncidentStatsScreen> {
                   animated(
                     IncidentSection(
                       icon: Icons.directions_car_rounded,
+                      iconColor: AppColors.teal,
                       title: 'Véhicules les plus touchés',
                       child: _TopVehicles(stats: s),
                     ),
@@ -161,11 +160,11 @@ class _HeroCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
       decoration: BoxDecoration(
-        gradient: IncidentPalette.brandGradient,
-        borderRadius: BorderRadius.circular(24),
+        gradient: AppColors.heroGradient,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         boxShadow: [
           BoxShadow(
-            color: IncidentPalette.brown.withValues(alpha: 0.35),
+            color: AppColors.ink.withValues(alpha: 0.25),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -253,7 +252,7 @@ class _ResolutionRing extends StatelessWidget {
               strokeWidth: 9,
               strokeCap: StrokeCap.round,
               backgroundColor: Colors.white24,
-              color: Colors.white,
+              color: AppColors.brand,
             ),
           ),
           Column(
@@ -288,7 +287,6 @@ class _StatusBreakdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final total = stats.total;
     return Column(
       children: [
@@ -297,7 +295,7 @@ class _StatusBreakdown extends StatelessWidget {
           child: SizedBox(
             height: 14,
             child: total == 0
-                ? Container(color: scheme.surfaceContainerHighest)
+                ? Container(color: context.palette.surfaceAlt)
                 : TweenAnimationBuilder<double>(
                     tween: Tween(begin: 0, end: 1),
                     duration: const Duration(milliseconds: 800),
@@ -318,7 +316,7 @@ class _StatusBreakdown extends StatelessWidget {
                           Expanded(
                             flex: math.max(1, (1000 * (1 - t)).round()),
                             child: Container(
-                              color: scheme.surfaceContainerHighest,
+                              color: context.palette.surfaceAlt,
                             ),
                           ),
                       ],
@@ -362,7 +360,7 @@ class _StatusBreakdown extends StatelessWidget {
                         ? '0 %'
                         : '${((stats.byStatus[s] ?? 0) * 100 / total).round()} %',
                     textAlign: TextAlign.right,
-                    style: TextStyle(color: scheme.onSurfaceVariant),
+                    style: TextStyle(color: context.palette.muted),
                   ),
                 ),
               ],
@@ -454,11 +452,10 @@ class _TopVehicles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     if (stats.topVehicles.isEmpty) {
       return Text(
         'Aucun incident enregistré.',
-        style: TextStyle(color: scheme.onSurfaceVariant),
+        style: TextStyle(color: context.palette.muted),
       );
     }
     final max = stats.topVehicles.first.count;
@@ -479,13 +476,13 @@ class _TopVehicles extends StatelessWidget {
                   CircleAvatar(
                     radius: 15,
                     backgroundColor: i == 0
-                        ? IncidentPalette.brown
-                        : IncidentPalette.brown.withValues(alpha: 0.12),
+                        ? AppColors.brand
+                        : AppColors.brand.withValues(alpha: 0.12),
                     child: Text(
                       '${i + 1}',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
-                        color: i == 0 ? Colors.white : IncidentPalette.brown,
+                        color: i == 0 ? Colors.white : AppColors.brand,
                       ),
                     ),
                   ),
@@ -510,8 +507,8 @@ class _TopVehicles extends StatelessWidget {
                             builder: (context, x, _) => LinearProgressIndicator(
                               value: x,
                               minHeight: 6,
-                              color: IncidentPalette.brown,
-                              backgroundColor: IncidentPalette.brown.withValues(
+                              color: AppColors.brand,
+                              backgroundColor: AppColors.brand.withValues(
                                 alpha: 0.12,
                               ),
                             ),
@@ -546,11 +543,10 @@ class _RecentActivity extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     if (stats.recentActivity.isEmpty) {
       return Text(
         'Aucune activité pour le moment.',
-        style: TextStyle(color: scheme.onSurfaceVariant),
+        style: TextStyle(color: context.palette.muted),
       );
     }
     return Column(
@@ -614,7 +610,7 @@ class _RecentActivity extends StatelessWidget {
                           '${a.entry.userName ?? 'Utilisateur supprimé'} · ${relativeDateTime(a.entry.changedAt)}',
                           style: TextStyle(
                             fontSize: 12.5,
-                            color: scheme.onSurfaceVariant,
+                            color: context.palette.muted,
                           ),
                         ),
                       ],

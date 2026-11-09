@@ -96,4 +96,22 @@ class UserRepository {
     final r = await db.rawQuery('SELECT COUNT(*) FROM users');
     return Sqflite.firstIntValue(r) ?? 0;
   }
+
+  /// (rentals created, revenue of those rentals, incidents reported)
+  Future<(int, double, int)> activity(int userId) async {
+    final db = await _db;
+    final r = await db.rawQuery('''
+      SELECT
+        (SELECT COUNT(*) FROM rentals WHERE user_id = ?) AS rentals,
+        (SELECT COALESCE(SUM(prix_total), 0) FROM rentals
+           WHERE user_id = ? AND statut != 'annulee') AS revenue,
+        (SELECT COUNT(*) FROM incidents WHERE reported_by_user_id = ?) AS incidents
+    ''', [userId, userId, userId]);
+    final row = r.first;
+    return (
+      row['rentals'] as int,
+      (row['revenue'] as num).toDouble(),
+      row['incidents'] as int,
+    );
+  }
 }

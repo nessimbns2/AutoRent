@@ -1,70 +1,36 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme.dart';
+import '../../../core/widgets/shared_widgets.dart';
+import '../../../core/widgets/status_chips.dart';
 import '../../../models/enums.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Visual identity of the incidents module (colors, icons, gradients)
-//
-// Palette built around the app's brown brand color: deep wine red for
-// accidents, slate blue for breakdowns, cognac / denim / forest green for the
-// statuses. No yellow or orange.
+// Visual identity of the incidents module, built on the app design system
+// (AppColors, AppCard, IconBadge…) so it matches the other tabs in light and
+// dark mode. Type / status colours come from status_chips.dart, the same ones
+// the dashboard and vehicle screens use for incidents.
 // ─────────────────────────────────────────────────────────────────────────────
 
-abstract final class IncidentPalette {
-  static const brown = Color(0xFF8F4C33); // brand primary
-  static const brownDark = Color(0xFF5D2F1E);
-  static const wine = Color(0xFFA63A32);
-  static const wineDark = Color(0xFF6E1F1A);
-  static const slate = Color(0xFF4F6D85);
-  static const slateDark = Color(0xFF2E4356);
-  static const cognac = Color(0xFF9C6644);
-  static const denim = Color(0xFF3D6FA5);
-  static const forest = Color(0xFF3E7D5A);
-  static const danger = Color(0xFFB3261E);
-
-  static const brandGradient = LinearGradient(
-    colors: [brown, brownDark],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-}
-
 extension IncidentTypeStyle on IncidentType {
-  Color get color => switch (this) {
-    IncidentType.accident => IncidentPalette.wine,
-    IncidentType.panne => IncidentPalette.slate,
-  };
+  Color get color => incidentTypeColor(this);
 
-  IconData get icon => switch (this) {
-    IncidentType.accident => Icons.car_crash_rounded,
-    IncidentType.panne => Icons.build_rounded,
-  };
+  IconData get icon => incidentTypeIcon(this);
 
   String get hint => switch (this) {
     IncidentType.accident => 'Collision, choc, accrochage',
     IncidentType.panne => 'Moteur, batterie, pneu, électrique',
   };
 
-  LinearGradient get gradient => switch (this) {
-    IncidentType.accident => const LinearGradient(
-      colors: [IncidentPalette.wine, IncidentPalette.wineDark],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    ),
-    IncidentType.panne => const LinearGradient(
-      colors: [IncidentPalette.slate, IncidentPalette.slateDark],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    ),
-  };
+  LinearGradient get gradient => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color.lerp(color, Colors.white, 0.18)!, color],
+  );
 }
 
 extension IncidentStatusStyle on IncidentStatus {
-  Color get color => switch (this) {
-    IncidentStatus.enAttente => IncidentPalette.cognac,
-    IncidentStatus.enCours => IncidentPalette.denim,
-    IncidentStatus.resolu => IncidentPalette.forest,
-  };
+  Color get color => incidentStatusColor(this);
 
   IconData get icon => switch (this) {
     IncidentStatus.enAttente => Icons.schedule_rounded,
@@ -90,17 +56,18 @@ extension IncidentStatusStyle on IncidentStatus {
 String incidentHeroTag(int id) => 'incident-badge-$id';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TypeBadge — rounded gradient square with the type icon (used in a Hero)
+// TypeBadge — tinted rounded square with the type icon (IconBadge style).
+// [filled] gives the solid version used in the detail hero.
 // ─────────────────────────────────────────────────────────────────────────────
 class IncidentTypeBadge extends StatelessWidget {
   final IncidentType type;
   final double size;
-  final bool onDark;
+  final bool filled;
   const IncidentTypeBadge({
     super.key,
     required this.type,
     this.size = 48,
-    this.onDark = false,
+    this.filled = false,
   });
 
   @override
@@ -108,69 +75,51 @@ class IncidentTypeBadge extends StatelessWidget {
     width: size,
     height: size,
     decoration: BoxDecoration(
-      gradient: onDark ? null : type.gradient,
-      color: onDark ? Colors.white.withValues(alpha: 0.2) : null,
-      borderRadius: BorderRadius.circular(size * 0.3),
-      border: onDark
-          ? Border.all(color: Colors.white.withValues(alpha: 0.5))
-          : null,
-      boxShadow: onDark
-          ? null
-          : [
+      gradient: filled ? type.gradient : null,
+      color: filled ? null : type.color.withValues(alpha: 0.13),
+      borderRadius: BorderRadius.circular(size * 0.32),
+      boxShadow: filled
+          ? [
               BoxShadow(
                 color: type.color.withValues(alpha: 0.35),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
               ),
-            ],
+            ]
+          : null,
     ),
     alignment: Alignment.center,
-    child: Icon(type.icon, color: Colors.white, size: size * 0.52),
+    child: Icon(
+      type.icon,
+      color: filled ? Colors.white : type.color,
+      size: size * 0.5,
+    ),
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// StatusPill — colored status label with an icon
+// StatusPill — the app's StatusChip with the status icon
 // ─────────────────────────────────────────────────────────────────────────────
 class IncidentStatusPill extends StatelessWidget {
   final IncidentStatus status;
-  final bool onDark;
+  final bool solid;
   const IncidentStatusPill({
     super.key,
     required this.status,
-    this.onDark = false,
+    this.solid = false,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final fg = onDark ? Colors.white : status.color;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: onDark
-            ? Colors.white.withValues(alpha: 0.2)
-            : status.color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: fg.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(status.icon, size: 14, color: fg),
-          const SizedBox(width: 5),
-          Text(
-            status.label,
-            style: TextStyle(
-              color: fg,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AnimatedSwitcher(
+    duration: const Duration(milliseconds: 250),
+    child: StatusChip(
+      key: ValueKey(status),
+      label: status.label,
+      color: status.color,
+      icon: status.icon,
+      solid: solid,
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -260,7 +209,8 @@ class AnimatedCount extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// StatusSelectorCard — one of the 3 tappable counters on top of the list
+// StatusSelectorCard — one of the 3 tappable counters on top of the list.
+// Selected = ink (navy) like the app's PillTabs, brand orange in dark mode.
 // ─────────────────────────────────────────────────────────────────────────────
 class StatusSelectorCard extends StatelessWidget {
   final IncidentStatus status;
@@ -278,49 +228,55 @@ class StatusSelectorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final color = status.color;
+    final selectedBg = context.isDark ? AppColors.brand : AppColors.ink;
+    final fg = selected ? Colors.white : context.colors.onSurface;
     return AnimatedScale(
-      scale: selected ? 1.0 : 0.96,
+      scale: selected ? 1.0 : 0.97,
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOutBack,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 280),
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
-          color: selected ? color : scheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: selected ? color : scheme.outlineVariant),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.35),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : const [],
+          color: selected ? selectedBg : context.colors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(
+            color: selected
+                ? Colors.transparent
+                : context.palette.border.withValues(alpha: 0.8),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: selected
+                  ? selectedBg.withValues(alpha: 0.28)
+                  : context.palette.cardShadow,
+              blurRadius: selected ? 18 : 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         child: Material(
           type: MaterialType.transparency,
           child: InkWell(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             onTap: onTap,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        padding: const EdgeInsets.all(6),
+                        duration: const Duration(milliseconds: 280),
+                        width: 30,
+                        height: 30,
                         decoration: BoxDecoration(
                           color: selected
-                              ? Colors.white.withValues(alpha: 0.25)
-                              : color.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
+                              ? Colors.white.withValues(alpha: 0.16)
+                              : color.withValues(alpha: 0.13),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
                           status.icon,
@@ -331,27 +287,38 @@ class StatusSelectorCard extends StatelessWidget {
                       const Spacer(),
                       AnimatedCount(
                         value: count,
-                        style: TextStyle(
-                          fontSize: 22,
+                        style: context.text.titleLarge?.copyWith(
+                          color: fg,
                           fontWeight: FontWeight.w800,
-                          color: selected ? Colors.white : scheme.onSurface,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 300),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: selected ? Colors.white : scheme.onSurfaceVariant,
-                    ),
-                    child: Text(
-                      status.pluralLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          status.pluralLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.text.labelMedium?.copyWith(
+                            color: selected
+                                ? Colors.white.withValues(alpha: 0.85)
+                                : context.palette.muted,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -374,7 +341,6 @@ class IncidentStatusTimeline extends StatelessWidget {
   Widget build(BuildContext context) {
     final steps = IncidentStatus.values;
     final current = steps.indexOf(status);
-    final scheme = Theme.of(context).colorScheme;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -392,14 +358,13 @@ class IncidentStatusTimeline extends StatelessWidget {
                 Text(
                   steps[i].label,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
+                  style: context.text.labelMedium?.copyWith(
                     fontWeight: i == current
-                        ? FontWeight.w800
+                        ? FontWeight.w700
                         : FontWeight.w500,
                     color: i <= current
-                        ? scheme.onSurface
-                        : scheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        ? context.colors.onSurface
+                        : context.palette.muted,
                   ),
                 ),
               ],
@@ -408,15 +373,12 @@ class IncidentStatusTimeline extends StatelessWidget {
           if (i < steps.length - 1)
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.only(top: 17),
+                padding: const EdgeInsets.only(top: 18),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: Stack(
                     children: [
-                      Container(
-                        height: 6,
-                        color: scheme.surfaceContainerHighest,
-                      ),
+                      Container(height: 5, color: context.palette.surfaceAlt),
                       TweenAnimationBuilder<double>(
                         tween: Tween(end: i < current ? 1 : 0),
                         duration: const Duration(milliseconds: 600),
@@ -424,7 +386,7 @@ class IncidentStatusTimeline extends StatelessWidget {
                         builder: (context, v, _) => FractionallySizedBox(
                           widthFactor: v,
                           child: Container(
-                            height: 6,
+                            height: 5,
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [steps[i].color, steps[i + 1].color],
@@ -456,41 +418,38 @@ class _StepDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 400),
       curve: Curves.easeOutBack,
-      width: isCurrent ? 40 : 34,
-      height: isCurrent ? 40 : 34,
+      width: isCurrent ? 42 : 36,
+      height: isCurrent ? 42 : 36,
       decoration: BoxDecoration(
-        color: reached ? status.color : scheme.surfaceContainerHighest,
+        color: reached ? status.color : context.palette.surfaceAlt,
         shape: BoxShape.circle,
+        border: isCurrent
+            ? Border.all(color: status.color.withValues(alpha: 0.25), width: 4)
+            : null,
         boxShadow: isCurrent
             ? [
                 BoxShadow(
-                  color: status.color.withValues(alpha: 0.45),
+                  color: status.color.withValues(alpha: 0.35),
                   blurRadius: 12,
-                  spreadRadius: 1,
                 ),
               ]
             : const [],
       ),
       alignment: Alignment.center,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 300),
-        opacity: reached ? 1 : 0.45,
-        child: Icon(
-          status.icon,
-          size: isCurrent ? 20 : 17,
-          color: reached ? Colors.white : scheme.onSurfaceVariant,
-        ),
+      child: Icon(
+        status.icon,
+        size: isCurrent ? 19 : 17,
+        color: reached ? Colors.white : context.palette.muted,
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// InfoTile — icon + label + value row used in the detail screen
+// InfoTile — icon badge + label + value row used in the detail screen
 // ─────────────────────────────────────────────────────────────────────────────
 class IncidentInfoTile extends StatelessWidget {
   final IconData icon;
@@ -510,42 +469,29 @@ class IncidentInfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final c = color ?? scheme.primary;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 7),
         child: Row(
           children: [
-            Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: c.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, size: 20, color: c),
+            IconBadge(
+              icon: icon,
+              color: color ?? AppColors.brand,
+              size: 40,
+              iconSize: 19,
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
+                  Text(label, style: context.text.bodySmall),
+                  const SizedBox(height: 1),
                   Text(
                     value,
-                    style: const TextStyle(
-                      fontSize: 15,
+                    style: context.text.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -553,7 +499,7 @@ class IncidentInfoTile extends StatelessWidget {
               ),
             ),
             if (onTap != null)
-              Icon(Icons.chevron_right_rounded, color: scheme.outline),
+              Icon(Icons.chevron_right_rounded, color: context.palette.muted),
           ],
         ),
       ),
@@ -562,13 +508,15 @@ class IncidentInfoTile extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SectionCard with an icon header (detail + form)
+// Section card with an icon badge header (same look as the app SectionCard,
+// but takes any child widget).
 // ─────────────────────────────────────────────────────────────────────────────
 class IncidentSection extends StatelessWidget {
   final IconData icon;
   final String title;
   final Widget child;
   final Widget? trailing;
+  final Color? iconColor;
 
   const IncidentSection({
     super.key,
@@ -576,49 +524,32 @@ class IncidentSection extends StatelessWidget {
     required this.title,
     required this.child,
     this.trailing,
+    this.iconColor,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 20, color: IncidentPalette.brown),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              ?trailing,
-            ],
-          ),
-          const SizedBox(height: 12),
-          child,
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AppCard(
+    margin: const EdgeInsets.only(bottom: 14),
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            IconBadge(
+              icon: icon,
+              color: iconColor ?? AppColors.brand,
+              size: 32,
+              iconSize: 17,
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(title, style: context.text.titleSmall)),
+            ?trailing,
+          ],
+        ),
+        const SizedBox(height: 12),
+        child,
+      ],
+    ),
+  );
 }

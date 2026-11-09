@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../app/theme.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../app/route_args.dart';
@@ -189,7 +191,6 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
 
     final view = _view!;
     final inc = view.incident;
-    final scheme = Theme.of(context).colorScheme;
     var section = 0;
     Widget animated(Widget child) => EntranceAnimation(
       delay: Duration(milliseconds: 120 + 70 * section++),
@@ -197,26 +198,48 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
     );
 
     return Scaffold(
-      backgroundColor: scheme.surfaceContainerLowest,
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.pop(context, _didChange),
+        ),
+        title: Text('${inc.type.label} #${inc.id}'),
+        actions: [
+          DetailMenu(
+            items: [
+              DetailMenuItem('Modifier', Icons.edit_rounded, () {
+                if (!_busy) _edit(inc);
+              }),
+              DetailMenuItem('Changer le statut', Icons.swap_horiz_rounded, () {
+                if (!_busy) _pickStatus(inc);
+              }),
+              DetailMenuItem('Supprimer', Icons.delete_outline_rounded, () {
+                if (!_busy) _delete(inc);
+              }, destructive: true),
+            ],
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       bottomNavigationBar: _buildActionBar(inc),
       body: CustomScrollView(
         slivers: [
-          _buildHeader(inc),
           SliverToBoxAdapter(
             child: ResponsiveCenter(
               maxWidth: 850,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    EntranceAnimation(child: _buildHero(view)),
                     animated(
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () => _pickStatus(inc),
                         child: IncidentSection(
                           icon: Icons.timeline_rounded,
-                          title: 'Suivi de la prise en charge',
+                          title: 'Prise en charge',
                           trailing: TextButton.icon(
                             style: TextButton.styleFrom(
                               visualDensity: VisualDensity.compact,
@@ -312,7 +335,7 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
                                 value: view.clientName != null
                                     ? 'Locataire : ${view.clientName}'
                                     : 'Location liée',
-                                color: IncidentPalette.denim,
+                                color: AppColors.info,
                                 onTap: () => Navigator.pushNamed(
                                   context,
                                   Routes.rentalDetail,
@@ -324,7 +347,7 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
                                 icon: Icons.link_off_rounded,
                                 label: 'Location liée',
                                 value: 'Aucune location active à cette date',
-                                color: scheme.outline,
+                                color: context.palette.muted,
                               ),
                           ],
                         ),
@@ -346,13 +369,13 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
                         title: 'Photos de constat',
                         trailing: Text(
                           '${inc.photos.length}/5',
-                          style: TextStyle(color: scheme.onSurfaceVariant),
+                          style: TextStyle(color: context.palette.muted),
                         ),
                         child: inc.photos.isEmpty
                             ? Text(
                                 'Aucune photo jointe.',
                                 style: TextStyle(
-                                  color: scheme.onSurfaceVariant,
+                                  color: context.palette.muted,
                                 ),
                               )
                             : _PhotoGrid(
@@ -367,7 +390,7 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
                         title: 'Historique',
                         trailing: Text(
                           '${_history.length} étape${_history.length > 1 ? 's' : ''}',
-                          style: TextStyle(color: scheme.onSurfaceVariant),
+                          style: TextStyle(color: context.palette.muted),
                         ),
                         child: _HistoryList(entries: _history),
                       ),
@@ -382,168 +405,241 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
     );
   }
 
-  SliverAppBar _buildHeader(Incident inc) => SliverAppBar(
-    pinned: true,
-    expandedHeight: 210,
-    backgroundColor: inc.type.color,
-    foregroundColor: Colors.white,
-    leading: IconButton(
-      icon: const Icon(Icons.arrow_back_rounded),
-      onPressed: () => Navigator.pop(context, _didChange),
-    ),
-    actions: [
-      IconButton(
-        icon: const Icon(Icons.edit_rounded),
-        tooltip: 'Modifier',
-        onPressed: _busy ? null : () => _edit(inc),
+  /// Premium summary card on the app's navy hero gradient (same as the
+  /// dashboard header): type badge, status, date and the vehicle.
+  Widget _buildHero(IncidentView view) {
+    final inc = view.incident;
+    final white70 = Colors.white.withValues(alpha: 0.7);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        gradient: AppColors.heroGradient,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink.withValues(alpha: 0.25),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
-      IconButton(
-        icon: const Icon(Icons.delete_outline_rounded),
-        tooltip: 'Supprimer',
-        onPressed: _busy ? null : () => _delete(inc),
-      ),
-    ],
-    flexibleSpace: FlexibleSpaceBar(
-      titlePadding: const EdgeInsetsDirectional.only(start: 56, bottom: 14),
-      title: Text(
-        '${inc.type.label} #${inc.id}',
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-      background: Container(
-        decoration: BoxDecoration(gradient: inc.type.gradient),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         child: Stack(
           children: [
-            // Large faded icon as decoration
+            // Soft glow in the type colour + large faded icon.
             Positioned(
-              right: -10,
-              bottom: -20,
-              child: Opacity(
-                opacity: 0.16,
-                child: Icon(inc.type.icon, size: 150, color: Colors.white),
+              right: -60,
+              top: -60,
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      inc.type.color.withValues(alpha: 0.45),
+                      inc.type.color.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
               ),
             ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 56, 20, 56),
-                child: Row(
-                  children: [
-                    Hero(
-                      tag: incidentHeroTag(inc.id!),
-                      child: IncidentTypeBadge(
-                        type: inc.type,
-                        size: 64,
-                        onDark: true,
+            Positioned(
+              right: -14,
+              bottom: -26,
+              child: Icon(
+                inc.type.icon,
+                size: 130,
+                color: Colors.white.withValues(alpha: 0.06),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Hero(
+                        tag: incidentHeroTag(inc.id!),
+                        child: IncidentTypeBadge(
+                          type: inc.type,
+                          size: 58,
+                          filled: true,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          GestureDetector(
-                            onTap: () => _pickStatus(inc),
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 300),
-                              child: IncidentStatusPill(
-                                key: ValueKey(inc.status),
-                                status: inc.status,
-                                onDark: true,
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${inc.type.label} #${inc.id}',
+                              style: context.text.headlineSmall?.copyWith(
+                                color: Colors.white,
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            inc.type.hint,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.9),
+                            const SizedBox(height: 2),
+                            Text(
+                              inc.type.hint,
+                              style: context.text.bodySmall?.copyWith(
+                                color: white70,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: () => _pickStatus(inc),
+                        child: IncidentStatusPill(
+                          status: inc.status,
+                          solid: true,
+                        ),
+                      ),
+                      _HeroTag(
+                        icon: Icons.event_rounded,
+                        label:
+                            '${formatDate(inc.date)} · ${relativeDate(inc.date)}',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
                       ),
                     ),
-                  ],
-                ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
+                          child: CarImage(
+                            fileName: _vehicle?.photos.isNotEmpty == true
+                                ? _vehicle!.photos.first
+                                : null,
+                            seed: inc.vehicleId,
+                            width: 56,
+                            height: 42,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                view.vehicleLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: context.text.titleSmall?.copyWith(
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Text(
+                                view.clientName != null
+                                    ? 'Locataire : ${view.clientName}'
+                                    : 'Aucune location liée',
+                                style: context.text.bodySmall?.copyWith(
+                                  color: white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _buildActionBar(Incident inc) {
     final next = inc.status.next;
-    return SafeArea(
-      child: AnimatedSize(
+    return BottomActionBar(
+      child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
+        transitionBuilder: (child, a) => FadeTransition(
+          opacity: a,
+          child: ScaleTransition(
+            scale: Tween(begin: 0.94, end: 1.0).animate(a),
+            child: child,
+          ),
+        ),
         child: next == null
-            ? Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            ? SizedBox(
+                key: const ValueKey('reopen'),
+                width: double.infinity,
                 child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
                   onPressed: _busy
                       ? null
                       : () => _changeStatus(inc, IncidentStatus.enAttente),
                   icon: const Icon(Icons.replay_rounded),
-                  label: const Text('Rouvrir l\'incident'),
+                  label: const Text("Rouvrir l'incident"),
                 ),
               )
-            : Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  transitionBuilder: (child, a) => FadeTransition(
-                    opacity: a,
-                    child: ScaleTransition(
-                      scale: Tween(begin: 0.9, end: 1.0).animate(a),
-                      child: child,
-                    ),
-                  ),
-                  child: FilledButton.icon(
-                    key: ValueKey(next),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: next.color,
-                      minimumSize: const Size.fromHeight(54),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      textStyle: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    onPressed: _busy ? null : () => _changeStatus(inc, next),
-                    icon: _busy
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Icon(next.icon, size: 20),
-                    label: Text(
-                      next == IncidentStatus.enCours
-                          ? 'Prendre en charge'
-                          : 'Marquer comme résolu',
-                    ),
-                  ),
-                ),
+            : PrimaryButton(
+                key: ValueKey(next),
+                loading: _busy,
+                icon: next.icon,
+                color: next == IncidentStatus.resolu ? AppColors.success : null,
+                label: next == IncidentStatus.enCours
+                    ? 'Prendre en charge'
+                    : 'Marquer comme résolu',
+                onPressed: () => _changeStatus(inc, next),
               ),
       ),
     );
   }
+}
+
+/// Small translucent label on the hero card.
+class _HeroTag extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _HeroTag({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(30),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: Colors.white70),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            height: 1.2,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Vertical timeline of status changes: who did what, and when.
@@ -553,11 +649,10 @@ class _HistoryList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     if (entries.isEmpty) {
       return Text(
         'Aucun historique.',
-        style: TextStyle(color: scheme.onSurfaceVariant),
+        style: TextStyle(color: context.palette.muted),
       );
     }
     // Newest first.
@@ -596,7 +691,7 @@ class _HistoryList extends StatelessWidget {
                           child: Container(
                             width: 2,
                             margin: const EdgeInsets.symmetric(vertical: 2),
-                            color: scheme.outlineVariant,
+                            color: context.palette.border,
                           ),
                         ),
                     ],
@@ -624,7 +719,7 @@ class _HistoryList extends StatelessWidget {
                           '${formatDate(e.changedAt)} à ${_hhmm(e.changedAt)}',
                           style: TextStyle(
                             fontSize: 12.5,
-                            color: scheme.onSurfaceVariant,
+                            color: context.palette.muted,
                           ),
                         ),
                       ],
@@ -650,7 +745,6 @@ class _VehicleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
@@ -675,7 +769,7 @@ class _VehicleTile extends StatelessWidget {
                   'Véhicule concerné',
                   style: TextStyle(
                     fontSize: 12,
-                    color: scheme.onSurfaceVariant,
+                    color: context.palette.muted,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -690,7 +784,7 @@ class _VehicleTile extends StatelessWidget {
             ),
           ),
           if (onTap != null)
-            Icon(Icons.chevron_right_rounded, color: scheme.outline),
+            Icon(Icons.chevron_right_rounded, color: context.palette.muted),
         ],
       ),
     );
