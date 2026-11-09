@@ -49,3 +49,4 @@ app.*.map.json
 # Local notes (not committed)
 /docs/LOCATION.md
 /docs/LOCATION*.pdf
+/mail.env.json

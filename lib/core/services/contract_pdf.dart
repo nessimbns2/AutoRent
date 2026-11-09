@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -5,9 +7,8 @@ import 'package:printing/printing.dart';
 import '../../models/rental.dart';
 import '../utils/formatters.dart';
 
-/// Builds the rental contract and opens the system share sheet
-/// (WhatsApp, email, save...).
-Future<void> shareContractPdf(RentalView v) async {
+/// Builds the rental contract as a PDF.
+Future<Uint8List> buildContractPdf(RentalView v) async {
   final r = v.rental;
   final font =
       pw.Font.ttf(await rootBundle.load('assets/fonts/Poppins-Regular.ttf'));
@@ -48,7 +49,26 @@ Future<void> shareContractPdf(RentalView v) async {
       ]),
     ]),
   ));
-
-  await Printing.sharePdf(
-      bytes: await doc.save(), filename: 'contrat-${r.id}.pdf');
+  return doc.save();
 }
+
+String contractFileName(RentalView v) => 'contrat-${v.rental.id}.pdf';
+
+String contractEmailSubject(RentalView v) =>
+    'Votre contrat de location n° ${v.rental.id}';
+
+String contractEmailBody(RentalView v) {
+  final r = v.rental;
+  return 'Bonjour ${v.clientName.split(' ').first},\n\n'
+      'Veuillez trouver ci-joint votre contrat de location n° ${r.id} : '
+      '${v.vehicleLabel}, du ${formatDate(r.startDate)} au ${formatDate(r.endDate)}, '
+      'total ${formatMoney(r.totalPrice)}.\n\nCordialement,\nAutoRent';
+}
+
+/// Opens the system share sheet with the contract PDF.
+Future<void> shareContractPdf(RentalView v) async => Printing.sharePdf(
+      bytes: await buildContractPdf(v),
+      filename: contractFileName(v),
+      subject: contractEmailSubject(v),
+      body: contractEmailBody(v),
+    );

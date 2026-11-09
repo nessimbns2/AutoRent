@@ -20,7 +20,7 @@ import '../../repositories/client_repository.dart';
 import '../../repositories/maintenance_repository.dart';
 import '../../repositories/rental_repository.dart';
 import '../../repositories/vehicle_repository.dart';
-import '../../core/services/whatsapp_share.dart';
+import '../../core/services/contract_mailer.dart';
 import 'widgets/booking_calendar.dart';
 
 class RentalFormScreen extends StatefulWidget {
@@ -207,9 +207,20 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
         final view = await _rentalRepo.getViewById(newId);
         final client =
             _clients.where((c) => c.id == _selectedClientId).firstOrNull;
-        if (view != null && client != null && client.phone.trim().isNotEmpty) {
+        final email = client?.email?.trim();
+        if (view != null && email != null && email.isNotEmpty) {
           if (!mounted) return;
-          await offerWhatsAppContract(context, view, client.phone);
+          showSnack(context, 'Envoi du contrat à $email…');
+          // The rental is already saved: a mail failure must not block it.
+          try {
+            await emailContract(view, email);
+            if (mounted) {
+              showSnack(context, 'Contrat envoyé à $email',
+                  kind: SnackKind.success);
+            }
+          } on AppException catch (e) {
+            if (mounted) showSnack(context, e.message, kind: SnackKind.error);
+          }
         }
         if (!mounted) return;
         Navigator.pushReplacementNamed(
