@@ -15,10 +15,14 @@ class BookingCalendar extends StatefulWidget {
   final DateTime firstDay;
   final void Function(DateTime start, DateTime end)? onChanged;
 
+  /// Fixed departure day: a single tap picks the return day (used to extend).
+  final DateTime? lockedStart;
+
   const BookingCalendar({
     super.key,
     required this.booked,
     required this.firstDay,
+    this.lockedStart,
     this.start,
     this.end,
     this.onChanged,
@@ -40,9 +44,9 @@ class _BookingCalendarState extends State<BookingCalendar> {
 
   void _tap(DateTime day) {
     if (widget.onChanged == null) return;
-    final anchor = _anchor;
+    final anchor = widget.lockedStart ?? _anchor;
     if (anchor == null || !day.isAfter(anchor)) {
-      setState(() => _anchor = day);
+      if (widget.lockedStart == null) setState(() => _anchor = day);
       return;
     }
     for (var d = anchor; !d.isAfter(day); d = d.add(const Duration(days: 1))) {
