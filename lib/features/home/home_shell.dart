@@ -54,23 +54,10 @@ class _HomeShellState extends State<HomeShell> {
         if (!didPop) setState(() => _index = 0);
       },
       child: Scaffold(
-        body: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 260),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, anim) => FadeTransition(
-            opacity: anim,
-            child: SlideTransition(
-              position: Tween(
-                      begin: const Offset(0, 0.015), end: Offset.zero)
-                  .animate(anim),
-              child: child,
-            ),
-          ),
-          child: KeyedSubtree(
-            key: ValueKey('tab-$_index-${_servicesSegment.name}'),
-            child: _bodyFor(_index),
-          ),
+        // No cross-fade: it kept the old and new tab on screen together.
+        body: KeyedSubtree(
+          key: ValueKey('tab-$_index-${_servicesSegment.name}'),
+          child: _bodyFor(_index),
         ),
         bottomNavigationBar: _FloatingNavBar(
           items: _items,
@@ -164,7 +151,8 @@ class _NavButton extends StatelessWidget {
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutBack,
+              // Not easeOutBack: its overshoot makes the shadow blur negative.
+              curve: Curves.easeOutCubic,
               width: selected ? 52 : 40,
               height: 32,
               decoration: BoxDecoration(
