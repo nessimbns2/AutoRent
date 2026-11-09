@@ -20,6 +20,7 @@ import '../../repositories/client_repository.dart';
 import '../../repositories/maintenance_repository.dart';
 import '../../repositories/rental_repository.dart';
 import '../../repositories/vehicle_repository.dart';
+import '../../core/services/contract_mailer.dart';
 import 'widgets/booking_calendar.dart';
 
 class RentalFormScreen extends StatefulWidget {
@@ -203,6 +204,25 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
         final newId = await _rentalRepo.insert(rental);
         if (!mounted) return;
         showSnack(context, Strings.rentalAdded);
+        final view = await _rentalRepo.getViewById(newId);
+        final client =
+            _clients.where((c) => c.id == _selectedClientId).firstOrNull;
+        final email = client?.email?.trim();
+        if (view != null && email != null && email.isNotEmpty) {
+          if (!mounted) return;
+          showSnack(context, 'Envoi du contrat à $email…');
+          // The rental is already saved: a mail failure must not block it.
+          try {
+            await emailContract(view, email);
+            if (mounted) {
+              showSnack(context, 'Contrat envoyé à $email',
+                  kind: SnackKind.success);
+            }
+          } on AppException catch (e) {
+            if (mounted) showSnack(context, e.message, kind: SnackKind.error);
+          }
+        }
+        if (!mounted) return;
         Navigator.pushReplacementNamed(
           context,
           Routes.rentalDetail,
