@@ -20,6 +20,7 @@ import '../../repositories/client_repository.dart';
 import '../../repositories/maintenance_repository.dart';
 import '../../repositories/rental_repository.dart';
 import '../../repositories/vehicle_repository.dart';
+import '../../core/services/whatsapp_share.dart';
 import 'widgets/booking_calendar.dart';
 
 class RentalFormScreen extends StatefulWidget {
@@ -203,6 +204,14 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
         final newId = await _rentalRepo.insert(rental);
         if (!mounted) return;
         showSnack(context, Strings.rentalAdded);
+        final view = await _rentalRepo.getViewById(newId);
+        final client =
+            _clients.where((c) => c.id == _selectedClientId).firstOrNull;
+        if (view != null && client != null && client.phone.trim().isNotEmpty) {
+          if (!mounted) return;
+          await offerWhatsAppContract(context, view, client.phone);
+        }
+        if (!mounted) return;
         Navigator.pushReplacementNamed(
           context,
           Routes.rentalDetail,
