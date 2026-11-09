@@ -32,6 +32,7 @@ class Routes {
   // maintenances
   static const maintenanceDetail = '/maintenances/detail';
   static const maintenanceForm = '/maintenances/form';
+  static const maintenanceStats = '/maintenances/stats';
 
   // rentals
   static const rentalDetail = '/rentals/detail';
