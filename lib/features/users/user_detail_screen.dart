@@ -6,10 +6,15 @@ import '../../app/theme.dart';
 import '../../core/session/session_manager.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/password_policy.dart';
 import '../../core/utils/ui_helpers.dart';
+import '../../core/widgets/password_strength_meter.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../models/user.dart';
+import '../../models/user_activity.dart';
 import '../../repositories/user_repository.dart';
+import '../profile/activity_list.dart';
+import 'user_report_actions.dart';
 
 class UserDetailScreen extends StatefulWidget {
   final int userId;
@@ -30,7 +35,13 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     return _Data(u, a);
   }
 
-  void _reload() => setState(() { _future = _load(); });
+  late Future<List<UserActivity>> _activity =
+      _repo.getActivity(widget.userId, limit: 5);
+
+  void _reload() => setState(() {
+        _future = _load();
+        _activity = _repo.getActivity(widget.userId, limit: 5);
+      });
 
   Future<void> _edit(User user) async {
     final saved = await Navigator.pushNamed(
@@ -44,7 +55,11 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     }
   }
 
+  /// Colleague reset: another agent types a new password for this user
+  /// (forgotten password and no recovery key). Works fully offline.
   Future<void> _resetPassword(User user) async {
+    final actor = SessionManager.instance.currentUser;
+    if (actor?.id == null) return;
     final passwordController = TextEditingController();
     final confirmController = TextEditingController();
     final formKey = GlobalKey<FormState>();
@@ -55,33 +70,34 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
         icon: const IconBadge(
             icon: Icons.lock_reset_rounded, color: AppColors.violet, size: 56),
         title: const Text('Nouveau mot de passe', textAlign: TextAlign.center),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Pour ${user.fullName}',
-                  style: Theme.of(dialogCtx).textTheme.bodySmall),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: passwordController,
-                obscureText: true,
-                decoration:
-                    const InputDecoration(labelText: 'Nouveau mot de passe'),
-                validator: (v) => (v == null || v.length < 6)
-                    ? 'Minimum 6 caractères'
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: confirmController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Confirmation'),
-                validator: (v) => v != passwordController.text
-                    ? 'Les mots de passe ne correspondent pas'
-                    : null,
-              ),
-            ],
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Pour ${user.fullName}',
+                    style: Theme.of(dialogCtx).textTheme.bodySmall),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration:
+                      const InputDecoration(labelText: 'Nouveau mot de passe'),
+                  validator: PasswordPolicy.validate,
+                ),
+                PasswordStrengthMeter(controller: passwordController),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: confirmController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Confirmation'),
+                  validator: (v) => v != passwordController.text
+                      ? 'Les mots de passe ne correspondent pas'
+                      : null,
+                ),
+              ],
+            ),
           ),
         ),
         actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -112,9 +128,42 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
       ),
     );
 
-    if (ok == true && mounted) {
-      await _repo.updatePassword(user.email, passwordController.text);
-      if (mounted) showSnack(context, 'Mot de passe réinitialisé avec succès');
+    final newPassword = passwordController.text;
+    passwordController.dispose();
+    confirmController.dispose();
+    if (ok != true || !mounted) return;
+    try {
+      await _repo.resetByColleague(
+          targetId: user.id!, actorId: actor!.id!, newPassword: newPassword);
+      if (!mounted) return;
+      setState(() => _activity = _repo.getActivity(widget.userId, limit: 5));
+      showSnack(context, 'Mot de passe réinitialisé avec succès');
+    } on AppException catch (e) {
+      if (mounted) showSnack(context, e.message);
+    }
+  }
+
+  /// A colleague switches off 2FA for a user who lost their phone.
+  Future<void> _disableTwoFactor(User user) async {
+    final actor = SessionManager.instance.currentUser;
+    if (actor?.id == null) return;
+    final ok = await confirmDialog(
+      context,
+      title: 'Désactiver la 2FA',
+      message: 'Désactiver la double authentification de ${user.fullName} ? '
+          'Il pourra la réactiver depuis son profil.',
+      confirmLabel: 'Désactiver',
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await _repo.disableTotpByColleague(
+          targetId: user.id!, actorId: actor!.id!);
+      if (!mounted) return;
+      _didChange = true;
+      _reload();
+      showSnack(context, 'Double authentification désactivée.');
+    } on AppException catch (e) {
+      if (mounted) showSnack(context, e.message);
     }
   }
 
@@ -181,8 +230,23 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                 DetailMenu(items: [
                   DetailMenuItem(
                       'Modifier', Icons.edit_rounded, () => _edit(user)),
-                  DetailMenuItem('Réinitialiser le mot de passe',
-                      Icons.lock_reset_rounded, () => _resetPassword(user)),
+                  if (!isCurrent)
+                    DetailMenuItem('Réinitialiser le mot de passe',
+                        Icons.lock_reset_rounded, () => _resetPassword(user)),
+                  if (!isCurrent && user.totpEnabled)
+                    DetailMenuItem('Désactiver sa 2FA',
+                        Icons.phonelink_erase_rounded,
+                        () => _disableTwoFactor(user)),
+                  DetailMenuItem(
+                      'Exporter le rapport (PDF)',
+                      Icons.picture_as_pdf_rounded,
+                      () async {
+                        await exportUserReport(context, user);
+                        if (mounted) {
+                          setState(() => _activity =
+                              _repo.getActivity(widget.userId, limit: 5));
+                        }
+                      }),
                   DetailMenuItem('Supprimer', Icons.delete_outline_rounded,
                       () => _delete(user),
                       destructive: true),
@@ -252,22 +316,36 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                         icon: Icons.event_rounded,
                         label: 'Inscrit le',
                         value: formatDate(user.createdAt)),
+                    LabeledRow(
+                        icon: Icons.verified_user_outlined,
+                        label: '2FA',
+                        value: user.totpEnabled ? 'Activée' : 'Désactivée'),
                   ],
+                ),
+                const SizedBox(height: 14),
+                SectionCard(
+                  title: 'Activité récente',
+                  icon: Icons.history_rounded,
+                  iconColor: AppColors.info,
+                  children: [ActivityList(future: _activity)],
                 ),
               ],
             ),
             bottomNavigationBar: BottomActionBar(
               child: Row(children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(0, 54)),
-                    onPressed: () => _resetPassword(user),
-                    icon: const Icon(Icons.lock_reset_rounded),
-                    label: const Text('Mot de passe'),
+                // Own password: use the profile screen (needs the old one).
+                if (!isCurrent) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 54)),
+                      onPressed: () => _resetPassword(user),
+                      icon: const Icon(Icons.lock_reset_rounded),
+                      label: const Text('Mot de passe'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: PrimaryButton(
                     label: 'Modifier',

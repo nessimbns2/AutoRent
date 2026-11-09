@@ -4,6 +4,7 @@ import '../../app/theme.dart';
 import '../../core/session/session_manager.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/utils/ui_helpers.dart';
+import '../../core/utils/password_policy.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../models/user.dart';
@@ -165,7 +166,7 @@ class _UserFormScreenState extends State<UserFormScreen> {
                             () => _obscurePassword = !_obscurePassword),
                       ),
                     ),
-                    validator: Validators.password,
+                    validator: PasswordPolicy.validate,
                   ),
               ],
             ),

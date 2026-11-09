@@ -5,7 +5,9 @@ import '../../core/services/image_storage.dart';
 import '../../core/services/password_hasher.dart';
 import '../../core/session/session_manager.dart';
 import '../../core/utils/app_exception.dart';
+import '../../core/utils/password_policy.dart';
 import '../../core/utils/ui_helpers.dart';
+import '../../core/widgets/password_strength_meter.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../models/user.dart';
@@ -84,9 +86,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         showSnack(context, 'Mot de passe actuel incorrect.');
         return;
       }
-      if (newPass.length < 6) {
-        showSnack(context,
-            'Veuillez choisir un nouveau mot de passe de 6 caractères minimum.');
+      final policyError = PasswordPolicy.validate(newPass);
+      if (policyError != null) {
+        showSnack(context, 'Nouveau mot de passe : $policyError.');
         return;
       }
       if (newPass != _confirmPasswordController.text) {
@@ -106,7 +108,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
       await _userRepo.update(updatedUser);
       if (newPass.isNotEmpty) {
-        await _userRepo.updatePassword(updatedUser.email, newPass);
+        await _userRepo.changePassword(updatedUser.id!, newPass);
       }
       await SessionManager.instance.refresh();
       if (!mounted) return;
@@ -234,6 +236,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   textInputAction: TextInputAction.next,
                 ),
+                PasswordStrengthMeter(controller: _newPasswordController),
                 TextFormField(
                   controller: _confirmPasswordController,
                   obscureText: _obscure,

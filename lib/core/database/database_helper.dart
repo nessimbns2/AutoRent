@@ -15,7 +15,8 @@ class DatabaseHelper {
   ///     incidents — replaces the previous vehicles and rentals.
   /// v4: incident status history + incident map position (see
   ///     IncidentSchema). v3 was only used on the incident branch.
-  static const _dbVersion = 6;
+  /// v7: user module — recovery key, login lockout, 2FA (TOTP), activity log.
+  static const _dbVersion = 7;
 
   Database? _db;
 
@@ -88,6 +89,25 @@ class DatabaseHelper {
         }
       }
     }
+    // v7 (user module): recovery key, login lockout, 2FA (TOTP) and the
+    // user_activity log. Existing rows keep working (defaults).
+    if (oldV < 7) {
+      for (final col in const [
+        'ALTER TABLE users ADD COLUMN recovery_key_hash TEXT',
+        'ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE users ADD COLUMN locked_until TEXT',
+        'ALTER TABLE users ADD COLUMN totp_secret TEXT',
+        'ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0',
+      ]) {
+        try {
+          await db.execute(col);
+        } catch (_) {
+          // Column already exists (database from the user-module branch).
+        }
+      }
+      await db.execute(_userActivityTable);
+      await db.execute(_userActivityIndex);
+    }
   }
 
   Future<void> close() async {
@@ -113,6 +133,18 @@ class DatabaseHelper {
 
   // ── Schema ──────────────────────────────────────────────────────────────────
 
+  static const _userActivityTable = '''
+    CREATE TABLE IF NOT EXISTS user_activity (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      action     TEXT NOT NULL,
+      detail     TEXT,
+      created_at TEXT NOT NULL
+    )
+    ''';
+  static const _userActivityIndex =
+      'CREATE INDEX IF NOT EXISTS idx_user_activity_user ON user_activity(user_id, created_at)';
+
   static const _schemaStatements = <String>[
     '''
     CREATE TABLE users (
@@ -122,7 +154,12 @@ class DatabaseHelper {
       email         TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       photo_file    TEXT,
-      created_at    TEXT NOT NULL
+      created_at    TEXT NOT NULL,
+      recovery_key_hash    TEXT,
+      failed_attempts      INTEGER NOT NULL DEFAULT 0,
+      locked_until         TEXT,
+      totp_secret          TEXT,
+      totp_last_step       INTEGER NOT NULL DEFAULT 0
     )
     ''',
     '''
@@ -217,6 +254,8 @@ class DatabaseHelper {
     )
     ''',
     'CREATE INDEX idx_incident_photos_incident ON incident_photos(incident_id)',
+    _userActivityTable,
+    _userActivityIndex,
   ];
 
 }

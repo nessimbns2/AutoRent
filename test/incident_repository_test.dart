@@ -214,7 +214,7 @@ void main() {
       await DatabaseHelper.instance.close();
 
       db = await DatabaseHelper.instance.database; // runs onUpgrade 1 → 4
-      expect(await db.getVersion(), 6);
+      expect(await db.getVersion(), 7);
       expect(await db.query('vehicles'), hasLength(6));
       final views = await repo.getViews();
       expect(views, hasLength(7));
@@ -240,7 +240,7 @@ void main() {
         await DatabaseHelper.instance.close();
 
         db = await DatabaseHelper.instance.database; // runs onUpgrade 3 → 4
-        expect(await db.getVersion(), 6);
+        expect(await db.getVersion(), 7);
         final cars = await db.query('vehicles');
         expect(cars, hasLength(6));
         expect(cars.any((r) => r['modele'] == 'Golf'), isFalse);
@@ -355,7 +355,7 @@ void main() {
       await DatabaseHelper.instance.close();
 
       db = await DatabaseHelper.instance.database; // runs onUpgrade 2 → 4
-      expect(await db.getVersion(), 6);
+      expect(await db.getVersion(), 7);
       final cols = {
         for (final r in await db.rawQuery('PRAGMA table_info(incidents)'))
           r['name'],

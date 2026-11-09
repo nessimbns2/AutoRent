@@ -12,6 +12,8 @@ class Routes {
   static const profile = '/profile';
   static const photoViewer = '/photo-viewer';
   static const notifications = '/notifications';
+  static const recoveryKey = '/recovery-key';
+  static const security = '/security';
 
   // users
   static const users = '/users';

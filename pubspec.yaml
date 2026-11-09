@@ -28,6 +28,8 @@ dependencies:
   geolocator: ^14.1.2
   http: ^1.6.0
   mailer: ^7.3.0
+  qr_flutter: ^4.1.0 # QR code for 2FA setup
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

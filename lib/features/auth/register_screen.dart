@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/utils/ui_helpers.dart';
+import '../../core/utils/password_policy.dart';
 import '../../core/utils/validators.dart';
+import '../../core/widgets/password_strength_meter.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../models/user.dart';
 import '../../repositories/user_repository.dart';
@@ -111,7 +113,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               textInputAction: TextInputAction.next,
               decoration: InputDecoration(
                 labelText: 'Mot de passe',
-                helperText: '6 caractères minimum',
+                helperText: '8 caractères minimum, avec une lettre et un chiffre',
                 prefixIcon: const Icon(Icons.lock_outline_rounded),
                 suffixIcon: IconButton(
                   icon: Icon(_obscure
@@ -120,8 +122,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   onPressed: () => setState(() => _obscure = !_obscure),
                 ),
               ),
-              validator: Validators.password,
+              validator: PasswordPolicy.validate,
             ),
+            PasswordStrengthMeter(controller: _passCtrl),
             const SizedBox(height: 14),
             TextFormField(
               controller: _confirmCtrl,

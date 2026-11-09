@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../core/session/session_manager.dart';
+import '../../core/utils/auth_messages.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../repositories/user_repository.dart';
+import 'totp_challenge_screen.dart';
 import 'widgets/auth_layout.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -35,22 +37,38 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
-      final user =
-          await _repo.authenticate(_emailCtrl.text.trim(), _passCtrl.text);
+      final res = await _repo.signIn(_emailCtrl.text.trim(), _passCtrl.text);
       if (!mounted) return;
-      if (user == null) {
-        showSnack(context, 'Email ou mot de passe incorrect.');
-      } else {
-        await SessionManager.instance.login(user);
-        if (!mounted) return;
-        Navigator.pushReplacementNamed(context, Routes.home);
+      switch (res.status) {
+        case AuthStatus.success:
+          await SessionManager.instance.login(res.user!);
+          if (!mounted) return;
+          // The router guard shows the recovery key screen first when needed.
+          Navigator.pushReplacementNamed(context, Routes.home);
+        case AuthStatus.totpRequired:
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => TotpChallengeScreen(user: res.user!)),
+          );
+          if (mounted) _passCtrl.clear();
+        case AuthStatus.locked:
+          showSnack(context, lockMessage(res.lockedFor ?? Duration.zero));
+        case AuthStatus.invalid:
+          final left = res.attemptsLeft;
+          showSnack(
+              context,
+              left != null && left <= 2
+                  ? 'Email ou mot de passe incorrect. '
+                      'Il vous reste $left tentative${left > 1 ? 's' : ''}.'
+                  : 'Email ou mot de passe incorrect.');
       }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  /// Fills the form with the seeded demo account (see DatabaseHelper._seed).
+  /// Fills the form with the seeded demo account (see DemoData.seedAccounts).
   void _useDemo() {
     _emailCtrl.text = 'agent@autorent.tn';
     _passCtrl.text = 'Agent123!';
