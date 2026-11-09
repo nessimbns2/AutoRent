@@ -44,6 +44,22 @@ flutter run -d windows # 4. Lancement (ou -d <id> pour Android)
 
 > Sur Windows, l'application s'ouvre dans une fenêtre au format téléphone ; si la fenêtre est agrandie, l'interface reste affichée dans un cadre de smartphone.
 
+### Envoi automatique du contrat par e-mail
+
+À la création d'une location, le contrat PDF est envoyé au client (s'il a une adresse e-mail) via Gmail SMTP. L'identifiant n'est pas dans le code : créez un fichier local `mail.env.json` (ignoré par git) avec un **mot de passe d'application** Gmail :
+
+```json
+{ "MAIL_USER": "votre.adresse@gmail.com", "MAIL_PASS": "mot-de-passe-d-application" }
+```
+
+Puis lancez l'application avec :
+
+```bash
+flutter run --dart-define-from-file=mail.env.json
+```
+
+Sans ce fichier, l'application fonctionne normalement et affiche « E-mail non configuré » à la création d'une location. (Pour un APK : `flutter build apk --dart-define-from-file=mail.env.json`.)
+
 ---
 
 ## 🎨 Interface (v2)
