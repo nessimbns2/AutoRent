@@ -1,21 +1,15 @@
 import 'package:flutter/material.dart';
 
-import '../../app/route_args.dart';
-import '../../app/routes.dart';
-import '../../app/theme.dart';
-import '../../core/notifications/notification_service.dart';
-import '../../core/services/theme_controller.dart';
-import '../../core/session/session_manager.dart';
-import '../../core/utils/formatters.dart';
-import '../../core/widgets/shared_widgets.dart';
-import '../../core/widgets/status_chips.dart';
 import '../../models/enums.dart';
-import '../../repositories/dashboard_repository.dart';
-import '../rentals/widgets/rental_tile.dart';
-import '../services/services_tab.dart';
+import '../../repositories/rental_repository.dart';
+import '../../repositories/incident_repository.dart';
+import '../../repositories/vehicle_repository.dart';
+import '../../app/routes.dart';
+import '../../core/session/session_manager.dart';
+import '../../core/widgets/shared_widgets.dart';
 
 class DashboardTab extends StatefulWidget {
-  final void Function(int tab, {ServicesSegment? segment}) onGoToTab;
+  final void Function(int tab) onGoToTab;
   const DashboardTab({super.key, required this.onGoToTab});
 
   @override
@@ -23,148 +17,142 @@ class DashboardTab extends StatefulWidget {
 }
 
 class _DashboardTabState extends State<DashboardTab> {
-  final _repo = DashboardRepository();
-  late Future<DashboardData> _future = _load();
+  final _rentalRepo = RentalRepository();
+  final _incidentRepo = IncidentRepository();
+  final _vehicleRepo = VehicleRepository();
 
-  Future<DashboardData> _load() {
-    NotificationService.instance.refresh(); // keep the bell badge up to date
-    return _repo.load();
-  }
+  late Future<Map<String, int>> _future = _load();
 
-  void _reload() => setState(() { _future = _load(); });
+  Future<Map<String, int>> _load() async {
+    final user = SessionManager.instance.currentUser;
+    final rentalCounts = await _rentalRepo.countByStatus(
+      userId: user?.id,
+      userEmail: user?.email,
+    );
+    final incidents = await _incidentRepo.getViewsByStatus(IncidentStatus.enAttente);
+    final vehicles = await _vehicleRepo.getAll();
 
-  Future<void> _open(String route, {Object? args}) async {
-    final changed = await Navigator.pushNamed(context, route, arguments: args);
-    if (changed == true && mounted) _reload();
+    return {
+      'reservees': rentalCounts[RentalStatus.reservee] ?? 0,
+      'en_cours': rentalCounts[RentalStatus.enCours] ?? 0,
+      'incidents': incidents.length,
+      'vehicles': vehicles.length,
+    };
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<DashboardData>(
+    return FutureBuilder<Map<String, int>>(
       future: _future,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const SafeArea(child: LoadingView());
+          return const LoadingView();
         }
         if (snap.hasError) {
-          return SafeArea(
-              child: ErrorView(error: snap.error!, onRetry: _reload));
+          return ErrorView(
+              error: snap.error!,
+              onRetry: () => setState(() => _future = _load()));
         }
-        final d = snap.data!;
+        final data = snap.data!;
         return RefreshIndicator(
-          onRefresh: () async => _reload(),
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              _Header(
-                  data: d,
-                  onOpenNotifications: () async {
-                    await Navigator.pushNamed(context, Routes.notifications);
-                    if (mounted) _reload();
-                  }),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (d.overdue > 0) ...[
-                      InfoBanner(
-                        icon: Icons.schedule_rounded,
-                        color: AppColors.danger,
-                        text: d.overdue == 1
-                            ? '1 location a dépassé sa date de retour.'
-                            : '${d.overdue} locations ont dépassé leur date de retour.',
-                        action: TextButton(
-                          onPressed: () => widget.onGoToTab(2),
-                          child: const Text('Voir'),
-                        ),
-                      ),
+          onRefresh: () async => setState(() => _future = _load()),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final int crossAxisCount = width >= 800 ? 4 : (width >= 550 ? 3 : 2);
+              final double childAspectRatio = width < 360
+                  ? 1.15
+                  : (width < 550 ? 1.25 : 1.35);
+
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1100),
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      Text('Tableau de bord',
+                          style: Theme.of(context).textTheme.headlineSmall),
                       const SizedBox(height: 16),
-                    ],
-                    _KpiGrid(data: d, onGoToTab: widget.onGoToTab),
-                    const SizedBox(height: 18),
-                    _QuickActions(onOpen: _open),
-                    const SizedBox(height: 18),
-                    _FleetCard(
-                        fleet: d.fleet, onTap: () => widget.onGoToTab(1)),
-                    const SizedBox(height: 10),
-                    SectionHeader(
-                      title: "À traiter aujourd'hui",
-                      actionLabel: 'Locations',
-                      onAction: () => widget.onGoToTab(2),
-                    ),
-                    if (d.departures.isEmpty && d.returns.isEmpty)
-                      const AppCard(
-                        child: Row(children: [
-                          IconBadge(
-                              icon: Icons.beach_access_rounded,
-                              color: AppColors.success),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                                'Aucun départ ni retour en attente. Belle journée !'),
+                      GridView.count(
+                        crossAxisCount: crossAxisCount,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: childAspectRatio,
+                        children: [
+                          _DashCard(
+                            icon: Icons.assignment_outlined,
+                            color: Colors.orange,
+                            label: 'Locations réservées',
+                            count: data['reservees']!,
+                            onTap: () => widget.onGoToTab(2),
                           ),
-                        ]),
-                      )
-                    else ...[
-                      for (final v in d.departures)
-                        _AgendaTile(
-                          label: 'Départ',
-                          color: AppColors.warning,
-                          icon: Icons.north_east_rounded,
-                          title: splitVehicleLabel(v.vehicleLabel).$1,
-                          subtitle: '${v.clientName} · ${relativeDay(v.rental.startDate)}',
-                          onTap: () => _open(Routes.rentalDetail,
-                              args: IdArgs(v.rental.id!)),
-                        ),
-                      for (final v in d.returns)
-                        _AgendaTile(
-                          label: isRentalOverdue(v.rental) ? 'En retard' : 'Retour',
-                          color: isRentalOverdue(v.rental)
-                              ? AppColors.danger
-                              : AppColors.info,
-                          icon: Icons.south_west_rounded,
-                          title: splitVehicleLabel(v.vehicleLabel).$1,
-                          subtitle: '${v.clientName} · ${relativeDay(v.rental.endDate)}',
-                          onTap: () => _open(Routes.rentalDetail,
-                              args: IdArgs(v.rental.id!)),
-                        ),
+                          _DashCard(
+                            icon: Icons.drive_eta_outlined,
+                            color: Colors.blue,
+                            label: 'Locations en cours',
+                            count: data['en_cours']!,
+                            onTap: () => widget.onGoToTab(2),
+                          ),
+                          _DashCard(
+                            icon: Icons.report_problem_outlined,
+                            color: Colors.red,
+                            label: 'Incidents en attente',
+                            count: data['incidents']!,
+                            onTap: () => widget.onGoToTab(4),
+                          ),
+                          _DashCard(
+                            icon: Icons.directions_car_outlined,
+                            color: Colors.green,
+                            label: 'Véhicules',
+                            count: data['vehicles']!,
+                            onTap: () => widget.onGoToTab(1),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Text('Actions rapides',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 12),
+                      _QuickAction(
+                        icon: Icons.add_circle_outline,
+                        label: 'Nouvelle location',
+                        onTap: () async {
+                          final changed = await Navigator.pushNamed(
+                              context, Routes.rentalForm);
+                          if (changed == true && mounted) {
+                            setState(() => _future = _load());
+                          }
+                        },
+                      ),
+                      _QuickAction(
+                        icon: Icons.report_outlined,
+                        label: 'Déclarer un incident',
+                        onTap: () async {
+                          final changed = await Navigator.pushNamed(
+                              context, Routes.incidentForm);
+                          if (changed == true && mounted) {
+                            setState(() => _future = _load());
+                          }
+                        },
+                      ),
+                      _QuickAction(
+                        icon: Icons.build_outlined,
+                        label: 'Planifier un entretien',
+                        onTap: () async {
+                          final changed = await Navigator.pushNamed(
+                              context, Routes.maintenanceForm);
+                          if (changed == true && mounted) {
+                            setState(() => _future = _load());
+                          }
+                        },
+                      ),
                     ],
-                    const SizedBox(height: 10),
-                    SectionHeader(
-                      title: 'Entretiens à venir',
-                      actionLabel: 'Tout voir',
-                      onAction: () => widget.onGoToTab(3,
-                          segment: ServicesSegment.maintenances),
-                    ),
-                    if (d.upcomingMaintenances.isEmpty)
-                      const AppCard(
-                        child: Row(children: [
-                          IconBadge(
-                              icon: Icons.verified_rounded,
-                              color: AppColors.success),
-                          SizedBox(width: 12),
-                          Expanded(
-                              child: Text(
-                                  'Aucun entretien prévu dans les 14 prochains jours.')),
-                        ]),
-                      )
-                    else
-                      for (final m in d.upcomingMaintenances)
-                        _AgendaTile(
-                          label: m.maintenance.status.label,
-                          color: maintenanceStatusColor(m.maintenance.status),
-                          icon: maintenanceTypeIcon(m.maintenance.type),
-                          title:
-                              '${m.maintenance.type} · ${splitVehicleLabel(m.vehicleLabel).$1}',
-                          subtitle: relativeDay(m.maintenance.date),
-                          onTap: () => _open(Routes.maintenanceDetail,
-                              args: IdArgs(m.maintenance.id!)),
-                        ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              );
+            },
           ),
         );
       },
@@ -172,459 +160,78 @@ class _DashboardTabState extends State<DashboardTab> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Header — greeting + revenue card with a 6-month mini chart
-// ─────────────────────────────────────────────────────────────────────────────
-class _Header extends StatelessWidget {
-  final DashboardData data;
-  final VoidCallback onOpenNotifications;
-  const _Header({required this.data, required this.onOpenNotifications});
-
-  @override
-  Widget build(BuildContext context) {
-    final user = SessionManager.instance.currentUser;
-    final hour = DateTime.now().hour;
-    final greeting = hour < 18 ? 'Bonjour' : 'Bonsoir';
-    final trend = data.revenueTrend;
-    final now = DateTime.now();
-
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: AppColors.heroGradient,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 16, 22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                AvatarCircle(
-                  initials: user?.initials ?? 'AR',
-                  photoFile: user?.photoFile,
-                  size: 46,
-                  color: AppColors.brand,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('$greeting, ${user?.firstName ?? ''}',
-                          style: context.text.titleMedium
-                              ?.copyWith(color: Colors.white)),
-                      Text(
-                        formatLongDay(now).replaceRange(
-                            0, 1, formatLongDay(now)[0].toUpperCase()),
-                        style: context.text.bodySmall?.copyWith(
-                            color: Colors.white.withValues(alpha: 0.65)),
-                      ),
-                    ],
-                  ),
-                ),
-                ValueListenableBuilder<int>(
-                  valueListenable: NotificationService.instance.unread,
-                  builder: (context, count, _) => CircleIconButton(
-                    icon: count > 0
-                        ? Icons.notifications_active_rounded
-                        : Icons.notifications_none_rounded,
-                    tooltip: 'Notifications',
-                    color: Colors.white,
-                    background: Colors.white.withValues(alpha: 0.12),
-                    badge: count > 0 ? count : null,
-                    onPressed: onOpenNotifications,
-                  ),
-                ),
-                ValueListenableBuilder<ThemeMode>(
-                  valueListenable: ThemeController.instance.mode,
-                  builder: (context, mode, _) => CircleIconButton(
-                    icon: mode == ThemeMode.dark
-                        ? Icons.light_mode_rounded
-                        : Icons.dark_mode_rounded,
-                    tooltip: mode == ThemeMode.dark
-                        ? 'Mode clair'
-                        : 'Mode sombre',
-                    color: Colors.white,
-                    background: Colors.white.withValues(alpha: 0.12),
-                    onPressed: () => ThemeController.instance
-                        .setDark(mode != ThemeMode.dark),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.07),
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Chiffre d'affaires · ${monthLabel(now.month)}",
-                              style: context.text.bodySmall?.copyWith(
-                                  color:
-                                      Colors.white.withValues(alpha: 0.65))),
-                          const SizedBox(height: 4),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(formatMoneyShort(data.monthRevenue),
-                                style: context.text.headlineMedium
-                                    ?.copyWith(color: Colors.white)),
-                          ),
-                          const SizedBox(height: 8),
-                          if (trend != null)
-                            StatusChip(
-                              label:
-                                  '${trend >= 0 ? '+' : ''}${trend.toStringAsFixed(0)} % vs mois dernier',
-                              color: trend >= 0
-                                  ? const Color(0xFF4ADE80)
-                                  : const Color(0xFFFF8A8A),
-                              icon: trend >= 0
-                                  ? Icons.trending_up_rounded
-                                  : Icons.trending_down_rounded,
-                            )
-                          else
-                            Text('Locations non annulées',
-                                style: context.text.bodySmall?.copyWith(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.5))),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    _MiniBars(revenue: data.revenue),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniBars extends StatelessWidget {
-  final List<MonthRevenue> revenue;
-  const _MiniBars({required this.revenue});
-
-  @override
-  Widget build(BuildContext context) {
-    final max = revenue.fold<double>(0, (m, r) => r.amount > m ? r.amount : m);
-    return SizedBox(
-      height: 86,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < revenue.length; i++)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: Tooltip(
-                message:
-                    '${monthLabel(revenue[i].month)} : ${formatMoneyShort(revenue[i].amount)}',
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TweenAnimationBuilder<double>(
-                      tween: Tween(
-                          begin: 0,
-                          end: max == 0 ? 0.06 : (revenue[i].amount / max)
-                              .clamp(0.06, 1.0)),
-                      duration: Duration(milliseconds: 500 + i * 80),
-                      curve: Curves.easeOutCubic,
-                      builder: (_, v, _) => Container(
-                        width: 12,
-                        height: 62 * v,
-                        decoration: BoxDecoration(
-                          color: i == revenue.length - 1
-                              ? AppColors.brand
-                              : Colors.white.withValues(alpha: 0.22),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      monthLabel(revenue[i].month).substring(0, 1).toUpperCase(),
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.white.withValues(alpha: 0.6)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// KPI grid
-// ─────────────────────────────────────────────────────────────────────────────
-class _KpiGrid extends StatelessWidget {
-  final DashboardData data;
-  final void Function(int tab, {ServicesSegment? segment}) onGoToTab;
-  const _KpiGrid({required this.data, required this.onGoToTab});
-
-  @override
-  Widget build(BuildContext context) {
-    final cards = [
-      _Kpi(
-        icon: Icons.directions_car_rounded,
-        color: AppColors.info,
-        value: '${data.rentalsByStatus[RentalStatus.enCours] ?? 0}',
-        label: 'Locations en cours',
-        onTap: () => onGoToTab(2),
-      ),
-      _Kpi(
-        icon: Icons.event_available_rounded,
-        color: AppColors.warning,
-        value: '${data.rentalsByStatus[RentalStatus.reservee] ?? 0}',
-        label: 'Réservations',
-        onTap: () => onGoToTab(2),
-      ),
-      _Kpi(
-        icon: Icons.key_rounded,
-        color: AppColors.success,
-        value: '${data.fleet.available}/${data.fleet.total}',
-        label: 'Véhicules libres',
-        onTap: () => onGoToTab(1),
-      ),
-      _Kpi(
-        icon: Icons.report_rounded,
-        color: AppColors.danger,
-        value: '${data.pendingIncidents}',
-        label: 'Incidents ouverts',
-        onTap: () => onGoToTab(3, segment: ServicesSegment.incidents),
-      ),
-    ];
-    return Column(children: [
-      Row(children: [
-        Expanded(child: cards[0]),
-        const SizedBox(width: 12),
-        Expanded(child: cards[1]),
-      ]),
-      const SizedBox(height: 12),
-      Row(children: [
-        Expanded(child: cards[2]),
-        const SizedBox(width: 12),
-        Expanded(child: cards[3]),
-      ]),
-    ]);
-  }
-}
-
-class _Kpi extends StatelessWidget {
+class _DashCard extends StatelessWidget {
   final IconData icon;
   final Color color;
-  final String value;
   final String label;
+  final int count;
   final VoidCallback onTap;
-  const _Kpi({
-    required this.icon,
-    required this.color,
-    required this.value,
-    required this.label,
-    required this.onTap,
-  });
+  const _DashCard(
+      {required this.icon,
+      required this.color,
+      required this.label,
+      required this.count,
+      required this.onTap});
 
   @override
-  Widget build(BuildContext context) => AppCard(
-        onTap: onTap,
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              IconBadge(icon: icon, color: color, size: 38, iconSize: 20),
-              const Spacer(),
-              Icon(Icons.arrow_outward_rounded,
-                  size: 18, color: context.palette.muted),
-            ]),
-            const SizedBox(height: 12),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(value, style: context.text.headlineSmall),
+  Widget build(BuildContext context) => Card(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(icon, color: color, size: 26),
+                const SizedBox(height: 4),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '$count',
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Text(
+                      label,
+                      style: Theme.of(context).textTheme.bodySmall,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ],
             ),
-            Text(label,
-                style: context.text.bodySmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-          ],
+          ),
         ),
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Quick actions
-// ─────────────────────────────────────────────────────────────────────────────
-class _QuickActions extends StatelessWidget {
-  final Future<void> Function(String route, {Object? args}) onOpen;
-  const _QuickActions({required this.onOpen});
-
-  @override
-  Widget build(BuildContext context) {
-    final actions = [
-      (Icons.car_rental_rounded, 'Louer', AppColors.brand, Routes.rentalForm),
-      (Icons.add_circle_outline_rounded, 'Véhicule', AppColors.info,
-          Routes.vehicleForm),
-      (Icons.build_rounded, 'Entretien', AppColors.teal,
-          Routes.maintenanceForm),
-      (Icons.report_gmailerrorred_rounded, 'Incident', AppColors.danger,
-          Routes.incidentForm),
-    ];
-    return AppCard(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-      child: Row(
-        children: [
-          for (final a in actions)
-            Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(AppRadius.md),
-                onTap: () => onOpen(a.$4),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Column(children: [
-                    IconBadge(icon: a.$1, color: a.$3, size: 50, filled: true),
-                    const SizedBox(height: 8),
-                    Text(a.$2, style: context.text.labelMedium),
-                  ]),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Fleet status card — stacked bar + legend
-// ─────────────────────────────────────────────────────────────────────────────
-class _FleetCard extends StatelessWidget {
-  final FleetStatus fleet;
-  final VoidCallback onTap;
-  const _FleetCard({required this.fleet, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final parts = [
-      ('Disponibles', fleet.available, AppColors.success),
-      ('Louées', fleet.rented, AppColors.info),
-      ('Entretien', fleet.maintenance, AppColors.warning),
-      ('Indisponibles', fleet.unavailable, AppColors.danger),
-    ];
-    return AppCard(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Expanded(
-                child: Text('État de la flotte',
-                    style: context.text.titleSmall)),
-            Text('${(fleet.occupancy * 100).toStringAsFixed(0)} % louée',
-                style: context.text.labelMedium
-                    ?.copyWith(color: AppColors.brand)),
-          ]),
-          const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              height: 12,
-              child: fleet.total == 0
-                  ? ColoredBox(color: context.palette.surfaceAlt)
-                  : Row(children: [
-                      for (final p in parts)
-                        if (p.$2 > 0)
-                          Expanded(
-                            flex: p.$2,
-                            child: Container(
-                              margin: const EdgeInsets.only(right: 2),
-                              color: p.$3,
-                            ),
-                          ),
-                    ]),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 16,
-            runSpacing: 8,
-            children: [
-              for (final p in parts)
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                        color: p.$3, borderRadius: BorderRadius.circular(3)),
-                  ),
-                  const SizedBox(width: 6),
-                  Text('${p.$1} ', style: context.text.bodySmall),
-                  Text('${p.$2}', style: context.text.labelMedium),
-                ]),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AgendaTile extends StatelessWidget {
-  final String label;
-  final Color color;
+class _QuickAction extends StatelessWidget {
   final IconData icon;
-  final String title;
-  final String subtitle;
+  final String label;
   final VoidCallback onTap;
-  const _AgendaTile({
-    required this.label,
-    required this.color,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
+  const _QuickAction(
+      {required this.icon, required this.label, required this.onTap});
 
   @override
-  Widget build(BuildContext context) => AppCard(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
-        onTap: onTap,
-        child: Row(children: [
-          IconBadge(icon: icon, color: color, size: 42),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: context.text.titleSmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                Text(subtitle,
-                    style: context.text.bodySmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          StatusChip(label: label, color: color),
-        ]),
+  Widget build(BuildContext context) => Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: ListTile(
+          leading: Icon(icon,
+              color: Theme.of(context).colorScheme.primary),
+          title: Text(label),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: onTap,
+        ),
       );
 }

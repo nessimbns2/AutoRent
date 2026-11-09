@@ -1,10 +1,7 @@
-import 'package:flutter/material.dart' show DateUtils;
 import 'package:sqflite/sqflite.dart';
 
-import '../core/constants/business_rules.dart';
 import '../core/database/database_helper.dart';
 import '../core/utils/app_exception.dart';
-import '../core/utils/formatters.dart';
 import '../models/enums.dart';
 import '../models/rental.dart';
 
@@ -15,8 +12,8 @@ class RentalRepository {
     RentalStatus status, {
     int? userId,
     String? userEmail,
-    String? search,
-  }) {
+  }) async {
+    final db = await _db;
     final where = <String>['r.statut = ?'];
     final args = <Object?>[status.value];
 
@@ -33,41 +30,19 @@ class RentalRepository {
       where.add('(${userConditions.join(' OR ')})');
     }
 
-    if (search != null && search.trim().isNotEmpty) {
-      final like = '%${search.trim().toLowerCase()}%';
-      where.add('(LOWER(c.nom) LIKE ? OR LOWER(c.prenom) LIKE ? '
-          'OR LOWER(v.marque) LIKE ? OR LOWER(v.modele) LIKE ? '
-          'OR LOWER(v.immatriculation) LIKE ?)');
-      args.addAll([like, like, like, like, like]);
-    }
-
-    return queryViews(where.join(' AND '), args);
-  }
-
-  static const _viewSelect = '''
-    SELECT r.*,
-           c.prenom || ' ' || c.nom AS client_name,
-           v.marque || ' ' || v.modele || ' · ' || v.immatriculation AS vehicle_label,
-           u.prenom || ' ' || u.nom AS user_name
-    FROM rentals r
-    JOIN clients c ON c.id = r.client_id
-    JOIN vehicles v ON v.id = r.vehicle_id
-    LEFT JOIN users u ON u.id = r.user_id
-  ''';
-
-  /// Generic joined query used by the dashboard and detail screens.
-  Future<List<RentalView>> queryViews(
-    String where,
-    List<Object?> args, {
-    String orderBy = 'r.date_debut DESC',
-    int? limit,
-  }) async {
-    final db = await _db;
-    final rows = await db.rawQuery(
-      '$_viewSelect WHERE $where ORDER BY $orderBy'
-      '${limit != null ? ' LIMIT $limit' : ''}',
-      args,
-    );
+    final sql = '''
+      SELECT r.*,
+             c.nom || ' ' || c.prenom AS client_name,
+             v.marque || ' ' || v.modele || ' · ' || v.immatriculation AS vehicle_label,
+             u.nom || ' ' || u.prenom AS user_name
+      FROM rentals r
+      JOIN clients c ON c.id = r.client_id
+      JOIN vehicles v ON v.id = r.vehicle_id
+      LEFT JOIN users u ON u.id = r.user_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY r.date_debut DESC
+    ''';
+    final rows = await db.rawQuery(sql, args);
     return [
       for (final r in rows)
         RentalView(
@@ -79,31 +54,27 @@ class RentalRepository {
     ];
   }
 
-  Future<List<RentalView>> getViewsByVehicle(int vehicleId) =>
-      queryViews('r.vehicle_id = ?', [vehicleId]);
-
-  /// Every day (`yyyy-MM-dd`) a vehicle is reserved or rented.
-  Future<Set<String>> bookedDays(int vehicleId, {int? excludeId}) async {
-    final days = <String>{};
-    for (final v in await getViewsByVehicle(vehicleId)) {
-      final r = v.rental;
-      if (r.id == excludeId ||
-          (r.status != RentalStatus.reservee &&
-              r.status != RentalStatus.enCours)) {
-        continue;
-      }
-      for (var d = r.startDate;
-          !d.isAfter(r.endDate);
-          d = d.add(const Duration(days: 1))) {
-        days.add(toIsoDate(d));
-      }
-    }
-    return days;
-  }
-
   Future<RentalView?> getViewById(int id) async {
-    final list = await queryViews('r.id = ?', [id]);
-    return list.isEmpty ? null : list.first;
+    final db = await _db;
+    final rows = await db.rawQuery('''
+      SELECT r.*,
+             c.nom || ' ' || c.prenom AS client_name,
+             v.marque || ' ' || v.modele || ' · ' || v.immatriculation AS vehicle_label,
+             u.nom || ' ' || u.prenom AS user_name
+      FROM rentals r
+      JOIN clients c ON c.id = r.client_id
+      JOIN vehicles v ON v.id = r.vehicle_id
+      LEFT JOIN users u ON u.id = r.user_id
+      WHERE r.id = ?
+    ''', [id]);
+    if (rows.isEmpty) return null;
+    final r = rows.first;
+    return RentalView(
+      rental: Rental.fromMap(r),
+      clientName: r['client_name'] as String,
+      vehicleLabel: r['vehicle_label'] as String,
+      userName: r['user_name'] as String?,
+    );
   }
 
   Future<Rental?> getById(int id) async {
@@ -120,37 +91,6 @@ class RentalRepository {
   Future<void> update(Rental r) async {
     final db = await _db;
     await db.update('rentals', r.toMap(), where: 'id = ?', whereArgs: [r.id]);
-  }
-
-  /// Extends a running or reserved contract up to [newEnd] at the same
-  /// daily rate. Refused if another booking overlaps the new period.
-  Future<Rental> extend(Rental r, DateTime newEnd) async {
-    if (!DateUtils.dateOnly(newEnd).isAfter(DateUtils.dateOnly(r.endDate))) {
-      throw const AppException(
-          'La nouvelle date de retour doit être après la date actuelle.');
-    }
-    if (await hasOverlap(r.vehicleId, r.startDate, newEnd, excludeId: r.id)) {
-      throw const AppException(
-          'Prolongation impossible : le véhicule est déjà réservé sur cette période.');
-    }
-    final updated = r.copyWith(
-      endDate: newEnd,
-      totalPrice: BusinessRules.extendedTotal(r, newEnd),
-    );
-    await update(updated);
-    return updated;
-  }
-
-  /// Closes a running contract. A late return moves the end date to
-  /// [returnDate] and adds the late fee to the total.
-  Future<void> completeReturn(Rental r, {DateTime? returnDate}) async {
-    final today = DateUtils.dateOnly(returnDate ?? DateTime.now());
-    final late = BusinessRules.lateDays(r.endDate, today);
-    await update(r.copyWith(
-      status: RentalStatus.terminee,
-      endDate: late > 0 ? today : r.endDate,
-      totalPrice: r.totalPrice + BusinessRules.lateFee(r, today),
-    ));
   }
 
   Future<void> changeStatus(int id, RentalStatus status) async {

@@ -11,7 +11,8 @@ class Routes {
   static const home = '/home';
   static const profile = '/profile';
   static const photoViewer = '/photo-viewer';
-  static const notifications = '/notifications';
+  static const recoveryKey = '/recovery-key';
+  static const security = '/security';
 
   // users
   static const users = '/users';
@@ -27,12 +28,10 @@ class Routes {
   static const vehicleDetail = '/vehicles/detail';
   static const vehicleForm = '/vehicles/form';
   static const maintenanceHistory = '/vehicles/maintenance-history';
-  static const availability = '/vehicles/availability';
 
   // maintenances
   static const maintenanceDetail = '/maintenances/detail';
   static const maintenanceForm = '/maintenances/form';
-  static const maintenanceStats = '/maintenances/stats';
 
   // rentals
   static const rentalDetail = '/rentals/detail';

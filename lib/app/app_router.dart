@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/session/session_manager.dart';
 import '../features/auth/forgot_password_screen.dart';
 import '../features/auth/login_screen.dart';
+import '../features/auth/recovery_key_screen.dart';
 import '../features/auth/register_screen.dart';
 import '../features/clients/client_detail_screen.dart';
 import '../features/clients/client_form_screen.dart';
@@ -15,9 +16,8 @@ import '../features/incidents/incident_form_screen.dart';
 import '../features/maintenances/maintenance_detail_screen.dart';
 import '../features/maintenances/maintenance_form_screen.dart';
 import '../features/maintenances/maintenance_history_screen.dart';
-import '../features/maintenances/maintenance_stats_screen.dart';
-import '../features/notifications/notifications_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/profile/security_screen.dart';
 import '../features/rentals/rental_detail_screen.dart';
 import '../features/rentals/rental_form_screen.dart';
 import '../features/splash/splash_screen.dart';
@@ -26,7 +26,6 @@ import '../features/users/user_form_screen.dart';
 import '../features/users/user_list_screen.dart';
 import '../features/vehicles/vehicle_detail_screen.dart';
 import '../features/vehicles/vehicle_form_screen.dart';
-import '../features/vehicles/availability_screen.dart';
 import 'route_args.dart';
 import 'routes.dart';
 
@@ -55,6 +54,14 @@ class AppRouter {
       return _page(const LoginScreen(), const RouteSettings(name: Routes.login));
     }
 
+    // User-module guard: opening home without a saved recovery key shows the
+    // key screen first (also covers sessions restored after an app update).
+    final user = session.currentUser;
+    if (user != null && s.name == Routes.home && user.recoveryKeyHash == null) {
+      return _page(const RecoveryKeyScreen(firstTime: true),
+          const RouteSettings(name: Routes.recoveryKey));
+    }
+
     final args = s.arguments;
     switch (s.name) {
       case Routes.splash:
@@ -72,8 +79,13 @@ class AppRouter {
             s);
       case Routes.profile:
         return _page(const ProfileScreen(), s);
-      case Routes.notifications:
-        return _page(const NotificationsScreen(), s);
+      case Routes.recoveryKey:
+        return _page(
+            RecoveryKeyScreen(
+                firstTime: session.currentUser?.recoveryKeyHash == null),
+            s);
+      case Routes.security:
+        return _page(const SecurityScreen(), s);
       case Routes.users:
         return _page(const UserListScreen(), s);
       case Routes.clients:
@@ -99,12 +111,6 @@ class AppRouter {
       case Routes.maintenanceDetail:
         return args is IdArgs
             ? _page(MaintenanceDetailScreen(maintenanceId: args.id), s)
-            : _bad(s);
-      case Routes.maintenanceStats:
-        return _page(const MaintenanceStatsScreen(), s);
-      case Routes.availability:
-        return args is IdArgs
-            ? _page(AvailabilityScreen(vehicleId: args.id), s)
             : _bad(s);
       case Routes.rentalDetail:
         return args is IdArgs

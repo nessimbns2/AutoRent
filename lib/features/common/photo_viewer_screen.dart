@@ -17,9 +17,15 @@ class PhotoViewerScreen extends StatefulWidget {
 }
 
 class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
-  late final PageController _pageController =
-      PageController(initialPage: widget.initialIndex);
-  late int _currentIndex = widget.initialIndex;
+  late final PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
 
   @override
   void dispose() {
@@ -35,54 +41,28 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text('Photo ${_currentIndex + 1} / $count'),
+        title: Text('${_currentIndex + 1} / $count'),
       ),
-      body: Stack(children: [
-        PageView.builder(
-          controller: _pageController,
-          itemCount: count,
-          onPageChanged: (i) => setState(() => _currentIndex = i),
-          itemBuilder: (context, i) => InteractiveViewer(
-            maxScale: 5,
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: count,
+        onPageChanged: (i) => setState(() => _currentIndex = i),
+        itemBuilder: (context, i) {
+          final fileName = widget.fileNames[i];
+          final file = ImageStorage.fileFor(fileName);
+          return InteractiveViewer(
             child: Center(
               child: Image.file(
-                ImageStorage.fileFor(widget.fileNames[i]),
+                file,
                 fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => const Icon(
-                    Icons.broken_image_rounded,
-                    size: 64,
-                    color: Colors.white38),
+                errorBuilder: (_, _, _) => const Center(
+                  child: Icon(Icons.broken_image, size: 64, color: Colors.white54),
+                ),
               ),
             ),
-          ),
-        ),
-        if (count > 1)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 24,
-            child: SafeArea(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (var i = 0; i < count; i++)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      width: i == _currentIndex ? 20 : 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: i == _currentIndex
-                            ? Colors.white
-                            : Colors.white.withValues(alpha: 0.4),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-      ]),
+          );
+        },
+      ),
     );
   }
 }

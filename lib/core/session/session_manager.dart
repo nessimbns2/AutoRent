@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/user.dart';
+import '../../models/user_activity.dart';
 import '../../repositories/user_repository.dart';
 
 /// Holds the currently logged-in user in memory; persists the id in shared_preferences.
@@ -38,6 +39,11 @@ class SessionManager {
   }
 
   Future<void> logout() async {
+    final id = _user?.id;
+    if (id != null) {
+      // Swallows errors (e.g. the account was just deleted).
+      await UserRepository().logActivity(id, ActivityAction.logout);
+    }
     _user = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);

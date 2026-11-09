@@ -8,8 +8,6 @@ import '../../models/vehicle.dart';
 import '../../repositories/vehicle_repository.dart';
 import 'widgets/vehicle_card.dart';
 
-enum _Sort { name, priceAsc, priceDesc }
-
 class VehiclesTab extends StatefulWidget {
   const VehiclesTab({super.key});
 
@@ -17,169 +15,152 @@ class VehiclesTab extends StatefulWidget {
   State<VehiclesTab> createState() => _VehiclesTabState();
 }
 
-class _VehiclesTabState extends State<VehiclesTab> {
+class _VehiclesTabState extends State<VehiclesTab>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   final _repo = VehicleRepository();
   final _searchController = TextEditingController();
 
-  VehicleAvailability? _filter; // null = all
-  _Sort _sort = _Sort.name;
   late Future<_VehicleListData> _future = _load();
 
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) return;
+      _reload();
+    });
+  }
+
+  bool? get _currentFilter => switch (_tabController.index) {
+        1 => true,
+        2 => false,
+        _ => null,
+      };
+
   Future<_VehicleListData> _load() async {
-    final vehicles = await _repo.getAll(search: _searchController.text);
+    final vehicles = await _repo.getAll(
+      availableOnly: _currentFilter,
+      search: _searchController.text,
+    );
     final map = <int, VehicleAvailability>{};
     for (final v in vehicles) {
-      if (v.id != null) map[v.id!] = await _repo.getAvailabilityState(v.id!);
+      if (v.id != null) {
+        map[v.id!] = await _repo.getAvailabilityState(v.id!);
+      }
     }
     return _VehicleListData(vehicles: vehicles, availabilities: map);
   }
 
-  void _reload() => setState(() { _future = _load(); });
+  void _reload() {
+    setState(() {
+      _future = _load();
+    });
+  }
 
   Future<void> _openForm() async {
-    final saved = await Navigator.pushNamed(context, Routes.vehicleForm);
+    final saved = await Navigator.pushNamed(
+      context,
+      Routes.vehicleForm,
+    );
     if (saved == true && mounted) _reload();
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _searchController.dispose();
     super.dispose();
-  }
-
-  List<Vehicle> _visible(_VehicleListData data) {
-    final list = data.vehicles
-        .where((v) => _filter == null || data.availabilities[v.id] == _filter)
-        .toList();
-    switch (_sort) {
-      case _Sort.priceAsc:
-        list.sort((a, b) => a.pricePerDay.compareTo(b.pricePerDay));
-      case _Sort.priceDesc:
-        list.sort((a, b) => b.pricePerDay.compareTo(a.pricePerDay));
-      case _Sort.name:
-        break; // already ordered by brand / model
-    }
-    return list;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'fab-vehicles',
+      floatingActionButton: FloatingActionButton(
         onPressed: _openForm,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Véhicule'),
+        child: const Icon(Icons.add),
       ),
-      body: SafeArea(
-        bottom: false,
-        child: FutureBuilder<_VehicleListData>(
-          future: _future,
-          builder: (context, snap) {
-            final data = snap.data;
-            final counts = <VehicleAvailability, int>{};
-            data?.availabilities.values
-                .forEach((a) => counts[a] = (counts[a] ?? 0) + 1);
+      body: Column(
+        children: [
+          TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(text: 'Tous'),
+              Tab(text: 'Disponibles'),
+              Tab(text: 'Indisponibles'),
+            ],
+          ),
+          SearchField(
+            hint: 'Rechercher par marque, modèle ou immatriculation',
+            onChanged: (_) => _reload(),
+          ),
+          Expanded(
+            child: FutureBuilder<_VehicleListData>(
+              future: _future,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
+                if (snap.hasError) {
+                  return ErrorView(error: snap.error!, onRetry: _reload);
+                }
+                final data = snap.data!;
+                final vehicles = data.vehicles;
+                if (vehicles.isEmpty) {
+                  return const EmptyState(message: 'Aucun véhicule trouvé.');
+                }
+                return RefreshIndicator(
+                  onRefresh: () async => _reload(),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final width = constraints.maxWidth;
+                      int crossAxisCount = 2;
+                      if (width >= 1200) {
+                        crossAxisCount = 5;
+                      } else if (width >= 900) {
+                        crossAxisCount = 4;
+                      } else if (width >= 600) {
+                        crossAxisCount = 3;
+                      }
+                      final childAspectRatio = width < 380
+                          ? 0.72
+                          : (width < 600 ? 0.78 : 0.85);
 
-            return Column(
-              children: [
-                PageHeader(
-                  title: 'Ma flotte',
-                  subtitle: data == null
-                      ? 'Chargement…'
-                      : '${data.vehicles.length} véhicule(s) · ${counts[VehicleAvailability.disponible] ?? 0} disponible(s)',
-                  actions: [
-                    PopupMenuButton<_Sort>(
-                      tooltip: 'Trier',
-                      position: PopupMenuPosition.under,
-                      initialValue: _sort,
-                      onSelected: (s) => setState(() => _sort = s),
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(
-                            value: _Sort.name, child: Text('Marque / modèle')),
-                        PopupMenuItem(
-                            value: _Sort.priceAsc,
-                            child: Text('Prix croissant')),
-                        PopupMenuItem(
-                            value: _Sort.priceDesc,
-                            child: Text('Prix décroissant')),
-                      ],
-                      child: const IgnorePointer(
-                        child: CircleIconButton(icon: Icons.tune_rounded),
-                      ),
-                    ),
-                  ],
-                ),
-                SearchField(
-                  controller: _searchController,
-                  hint: 'Marque, modèle ou immatriculation',
-                  onChanged: (_) => _reload(),
-                ),
-                PillTabs<VehicleAvailability?>(
-                  selected: _filter,
-                  onChanged: (v) => setState(() => _filter = v),
-                  tabs: [
-                    PillTab(null, 'Tous', count: data?.vehicles.length),
-                    for (final a in VehicleAvailability.values)
-                      PillTab(a, a.label, count: counts[a] ?? 0),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Expanded(child: _body(snap)),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _body(AsyncSnapshot<_VehicleListData> snap) {
-    if (snap.hasError) {
-      return ErrorView(error: snap.error!, onRetry: _reload);
-    }
-    // Keep showing the previous results while a new search is running.
-    if (!snap.hasData) return const LoadingView();
-    final data = snap.data!;
-    final vehicles = _visible(data);
-    if (vehicles.isEmpty) {
-      return EmptyState(
-        icon: Icons.directions_car_filled_outlined,
-        title: 'Aucun véhicule',
-        message: _searchController.text.isEmpty && _filter == null
-            ? 'Ajoutez votre premier véhicule pour commencer.'
-            : 'Aucun véhicule ne correspond à vos critères.',
-        actionLabel: _filter == null ? 'Ajouter un véhicule' : null,
-        onAction: _filter == null ? _openForm : null,
-      );
-    }
-    return RefreshIndicator(
-      onRefresh: () async => _reload(),
-      child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 96),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 230,
-          mainAxisExtent: 246,
-          crossAxisSpacing: 14,
-          mainAxisSpacing: 14,
-        ),
-        itemCount: vehicles.length,
-        itemBuilder: (context, index) {
-          final v = vehicles[index];
-          return VehicleCard(
-            vehicle: v,
-            availability:
-                data.availabilities[v.id] ?? VehicleAvailability.disponible,
-            onTap: () async {
-              final changed = await Navigator.pushNamed(
-                context,
-                Routes.vehicleDetail,
-                arguments: IdArgs(v.id!),
-              );
-              if (changed == true && mounted) _reload();
-            },
-          );
-        },
+                      return GridView.builder(
+                        padding: const EdgeInsets.all(12),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxisCount,
+                          childAspectRatio: childAspectRatio,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                        ),
+                        itemCount: vehicles.length,
+                        itemBuilder: (context, index) {
+                          final v = vehicles[index];
+                          final avail = data.availabilities[v.id] ??
+                              VehicleAvailability.disponible;
+                          return VehicleCard(
+                            vehicle: v,
+                            availability: avail,
+                            onTap: () async {
+                              final changed = await Navigator.pushNamed(
+                                context,
+                                Routes.vehicleDetail,
+                                arguments: IdArgs(v.id!),
+                              );
+                              if (changed == true && mounted) _reload();
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
