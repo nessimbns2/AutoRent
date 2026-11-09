@@ -127,6 +127,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                         DetailMenuItem('Modifier', Icons.edit_rounded,
                             () => _push(Routes.vehicleForm,
                                 VehicleFormArgs(vehicleId: v.id))),
+                        DetailMenuItem(
+                            'Disponibilités',
+                            Icons.calendar_month_rounded,
+                            () => _push(Routes.availability, IdArgs(v.id!))),
                         DetailMenuItem('Supprimer',
                             Icons.delete_outline_rounded, () => _delete(v),
                             destructive: true),

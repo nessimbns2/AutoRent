@@ -100,6 +100,23 @@ class RentalRepository {
     await db.update('rentals', r.toMap(), where: 'id = ?', whereArgs: [r.id]);
   }
 
+  /// Pushes the end date back, keeping the daily rate. Throws if the car is
+  /// already booked on the added days.
+  Future<void> extend(Rental r, DateTime newEnd) async {
+    final from = r.endDate.add(const Duration(days: 1));
+    if (newEnd.isBefore(from)) {
+      throw const AppException(
+          'La nouvelle date doit être après le retour prévu.');
+    }
+    if (await hasOverlap(r.vehicleId, from, newEnd, excludeId: r.id)) {
+      throw const AppException(
+          'Le véhicule est déjà réservé sur cette période.');
+    }
+    final extended = r.copyWith(endDate: newEnd);
+    await update(extended.copyWith(
+        totalPrice: r.totalPrice / r.days * extended.days));
+  }
+
   Future<void> changeStatus(int id, RentalStatus status) async {
     final db = await _db;
     await db.update('rentals', {'statut': status.value},

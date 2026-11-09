@@ -24,6 +24,7 @@ import '../features/users/user_form_screen.dart';
 import '../features/users/user_list_screen.dart';
 import '../features/vehicles/vehicle_detail_screen.dart';
 import '../features/vehicles/vehicle_form_screen.dart';
+import '../features/vehicles/availability_screen.dart';
 import 'route_args.dart';
 import 'routes.dart';
 
@@ -94,6 +95,10 @@ class AppRouter {
       case Routes.maintenanceDetail:
         return args is IdArgs
             ? _page(MaintenanceDetailScreen(maintenanceId: args.id), s)
+            : _bad(s);
+      case Routes.availability:
+        return args is IdArgs
+            ? _page(AvailabilityScreen(vehicleId: args.id), s)
             : _bad(s);
       case Routes.rentalDetail:
         return args is IdArgs

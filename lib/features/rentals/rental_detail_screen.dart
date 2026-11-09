@@ -12,6 +12,8 @@ import '../../models/rental.dart';
 import '../../models/vehicle.dart';
 import '../../repositories/rental_repository.dart';
 import '../../repositories/vehicle_repository.dart';
+import '../../core/services/contract_pdf.dart';
+import '../../core/utils/app_exception.dart';
 import 'widgets/rental_tile.dart';
 
 class RentalDetailScreen extends StatefulWidget {
@@ -43,6 +45,28 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
       _didChange = true;
       _reload();
     }
+  }
+
+  Future<void> _extend(Rental r) async {
+    final from = r.endDate.add(const Duration(days: 1));
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: from,
+      firstDate: from,
+      lastDate: from.add(const Duration(days: 365)),
+      helpText: 'Nouvelle date de retour',
+    );
+    if (picked == null || !mounted) return;
+    try {
+      await _repo.extend(r, picked);
+    } on AppException catch (e) {
+      if (mounted) showSnack(context, e.message);
+      return;
+    }
+    if (!mounted) return;
+    showSnack(context, 'Location prolongée jusqu\'au ${formatDate(picked)}');
+    _didChange = true;
+    _reload();
   }
 
   Future<void> _delete(Rental r) async {
@@ -123,6 +147,11 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
                                 rentalId: r.id,
                                 vehicleId: r.vehicleId,
                                 clientId: r.clientId))),
+                  if (editable)
+                    DetailMenuItem('Prolonger', Icons.update_rounded,
+                        () => _extend(r)),
+                  DetailMenuItem('Contrat PDF', Icons.picture_as_pdf_rounded,
+                      () => shareContractPdf(view)),
                   DetailMenuItem(
                       'Déclarer un incident',
                       Icons.report_gmailerrorred_rounded,

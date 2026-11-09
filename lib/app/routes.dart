@@ -26,6 +26,7 @@ class Routes {
   static const vehicleDetail = '/vehicles/detail';
   static const vehicleForm = '/vehicles/form';
   static const maintenanceHistory = '/vehicles/maintenance-history';
+  static const availability = '/vehicles/availability';
 
   // maintenances
   static const maintenanceDetail = '/maintenances/detail';
