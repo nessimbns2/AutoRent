@@ -62,6 +62,40 @@ flutter run -d windows # 4. Lancement (ou -d <id> pour Android)
 
 ---
 
+## 🔔 Notifications & règles métier
+
+La cloche de l'accueil (avec compteur) ouvre le **centre de notifications**. Les alertes sont calculées à partir de la base SQLite et classées en **Urgent / Aujourd'hui / À venir** ; au démarrage, un message signale les alertes urgentes.
+
+| Alerte | Règle |
+| :--- | :--- |
+| **Retour en retard** (urgent) | Location en cours dont la date de retour est dépassée, avec frais estimés |
+| **Réservation non retirée** (urgent) | Réservation dont la date de départ est passée sans remise des clés |
+| **Conflit entretien** (urgent) | Véhicule réservé (dans les 3 jours) alors qu'il est en atelier |
+| **Entretien en retard** (urgent) | Entretien planifié dont la date est passée |
+| **Incident en attente** | Incident non pris en charge (urgent après 2 jours) |
+| **Retour aujourd'hui / demain** | Préparer l'état des lieux |
+| **Départ aujourd'hui / réservation à préparer** | Départs du jour et des 2 prochains jours |
+| **Entretien bientôt** | Entretien planifié dans les 3 jours |
+
+Chaque alerte ouvre la fiche concernée ; elle peut être marquée comme lue (balayage ou « Tout lire »). Une alerte lue réapparaît si la situation change.
+
+**Règles appliquées aux contrats** (`lib/core/constants/business_rules.dart`) :
+- **Restitution en retard** : les jours de retard sont facturés au tarif journalier du contrat **majoré de 20 %** ; le détail est affiché avant validation et la date de retour est mise à jour.
+- **Restitution anticipée** : le montant du contrat reste inchangé.
+- **Prolongation** : nouvelle date de retour au même tarif journalier, refusée si le véhicule est déjà réservé sur la période.
+- **Remise des clés** refusée tant que le véhicule est en entretien.
+
+---
+
+## 🚘 Données de démonstration
+
+Au premier lancement (ou lors de la mise à jour vers la version 2 de la base), l'application installe une flotte de **6 véhicules avec photo** (`assets/vehicles/`) : Suzuki Swift, Škoda Fabia, Dacia Logan, Peugeot 208, Renault Clio et Audi Q3, ainsi que 8 locataires, 19 locations (terminées, en cours, en retard, réservées, annulée), 6 entretiens et 5 incidents.
+Les dates sont calculées par rapport au jour d'installation pour que l'accueil et les notifications aient toujours du contenu.
+
+> ⚠️ La migration vers la version 2 **remplace** les véhicules, locations, entretiens et incidents existants ; les utilisateurs et les locataires sont conservés.
+
+---
+
 ## 📦 Fonctionnalités principales
 
 1. **Authentification locale & Profil**

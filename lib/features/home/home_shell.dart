@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../app/routes.dart';
 import '../../app/theme.dart';
+import '../../core/notifications/notification_service.dart';
 import '../profile/account_tab.dart';
 import '../rentals/rentals_tab.dart';
 import '../services/services_tab.dart';
@@ -32,6 +34,41 @@ class _HomeShellState extends State<HomeShell> {
     _NavItemData(
         Icons.person_outline_rounded, Icons.person_rounded, 'Profil'),
   ];
+
+  /// The urgent-alerts reminder is shown once per app session.
+  static bool _alertShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _remindUrgent());
+  }
+
+  Future<void> _remindUrgent() async {
+    if (_alertShown) return;
+    _alertShown = true;
+    await NotificationService.instance.refresh();
+    final n = NotificationService.instance.urgentUnread.value;
+    if (n == 0 || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: const Duration(seconds: 6),
+      content: Row(children: [
+        const Icon(Icons.notifications_active_rounded,
+            color: AppColors.brand, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(n == 1
+              ? '1 alerte urgente à traiter'
+              : '$n alertes urgentes à traiter'),
+        ),
+      ]),
+      action: SnackBarAction(
+        label: 'Voir',
+        textColor: AppColors.brand,
+        onPressed: () => Navigator.pushNamed(context, Routes.notifications),
+      ),
+    ));
+  }
 
   void _goTo(int i, {ServicesSegment? segment}) => setState(() {
         _index = i;
