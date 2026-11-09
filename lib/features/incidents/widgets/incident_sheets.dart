@@ -7,6 +7,7 @@ import '../../../core/widgets/shared_widgets.dart';
 import '../../../models/enums.dart';
 import '../../../models/incident.dart';
 import '../../../models/vehicle.dart';
+import '../incident_permissions.dart';
 import 'incident_ui.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -318,19 +319,22 @@ Future<IncidentAction?> showIncidentActionsSheet(
         ),
         const Divider(height: 1),
         action(IncidentAction.open, Icons.visibility_rounded, 'Voir le détail'),
-        action(IncidentAction.edit, Icons.edit_rounded, 'Modifier'),
-        action(
-          IncidentAction.changeStatus,
-          Icons.swap_horiz_rounded,
-          'Changer le statut',
-          subtitle: 'Actuellement : ${inc.status.label}',
-        ),
-        action(
-          IncidentAction.delete,
-          Icons.delete_outline_rounded,
-          'Supprimer',
-          color: AppColors.danger,
-        ),
+        if (IncidentPermissions.canEdit)
+          action(IncidentAction.edit, Icons.edit_rounded, 'Modifier'),
+        if (IncidentPermissions.canChangeStatus)
+          action(
+            IncidentAction.changeStatus,
+            Icons.swap_horiz_rounded,
+            'Changer le statut',
+            subtitle: 'Actuellement : ${inc.status.label}',
+          ),
+        if (IncidentPermissions.canDelete)
+          action(
+            IncidentAction.delete,
+            Icons.delete_outline_rounded,
+            'Supprimer',
+            color: AppColors.danger,
+          ),
         const SizedBox(height: 12),
       ],
     );

@@ -18,6 +18,7 @@ import '../../repositories/incident_repository.dart';
 import '../../repositories/rental_repository.dart';
 import '../../repositories/vehicle_repository.dart';
 import 'location/incident_map.dart';
+import 'incident_permissions.dart';
 import 'location/location_picker_screen.dart';
 import 'widgets/incident_sheets.dart';
 import 'widgets/incident_ui.dart';
@@ -167,29 +168,15 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
     if (picked == null || !mounted) return;
     setState(() {
       _position = picked.point;
-      // Fill "Lieu" from the map unless the agent already typed something.
-      if (picked.address != null && _placeController.text.trim().isEmpty) {
-        _placeController.text = picked.address!;
+      // The pin is the source of truth: "Lieu" follows the picked address.
+      final address = picked.address?.trim();
+      if (address != null && address.isNotEmpty) {
+        _placeController.text = address;
+        _placeController.selection = TextSelection.collapsed(
+          offset: address.length,
+        );
       }
     });
-    if (picked.address != null &&
-        _placeController.text.trim() != picked.address) {
-      _offerAddress(picked.address!);
-    }
-  }
-
-  void _offerAddress(String address) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text('Utiliser « $address » comme lieu ?'),
-          action: SnackBarAction(
-            label: 'Utiliser',
-            onPressed: () => setState(() => _placeController.text = address),
-          ),
-        ),
-      );
   }
 
   Widget _buildLocationField() {
@@ -560,8 +547,9 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                     ),
                   ),
 
-                  // 6. Statut (edit only — a new declaration starts "en attente")
-                  if (_isEdit)
+                  // 6. Statut (edit only — a new declaration starts "en attente").
+                  // Only the admin may change it.
+                  if (_isEdit && IncidentPermissions.canChangeStatus)
                     animated(
                       IncidentSection(
                         icon: Icons.flag_rounded,

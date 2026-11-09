@@ -18,6 +18,7 @@ import '../../models/vehicle.dart';
 import '../../repositories/incident_repository.dart';
 import '../../repositories/vehicle_repository.dart';
 import 'location/incident_map.dart';
+import 'incident_permissions.dart';
 import 'location/location_picker_screen.dart';
 import 'widgets/incident_sheets.dart';
 import 'widgets/incident_ui.dart';
@@ -207,21 +208,30 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
         actions: [
           DetailMenu(
             items: [
-              DetailMenuItem('Modifier', Icons.edit_rounded, () {
-                if (!_busy) _edit(inc);
-              }),
-              DetailMenuItem('Changer le statut', Icons.swap_horiz_rounded, () {
-                if (!_busy) _pickStatus(inc);
-              }),
-              DetailMenuItem('Supprimer', Icons.delete_outline_rounded, () {
-                if (!_busy) _delete(inc);
-              }, destructive: true),
+              if (IncidentPermissions.canEdit)
+                DetailMenuItem('Modifier', Icons.edit_rounded, () {
+                  if (!_busy) _edit(inc);
+                }),
+              if (IncidentPermissions.canChangeStatus)
+                DetailMenuItem(
+                  'Changer le statut',
+                  Icons.swap_horiz_rounded,
+                  () {
+                    if (!_busy) _pickStatus(inc);
+                  },
+                ),
+              if (IncidentPermissions.canDelete)
+                DetailMenuItem('Supprimer', Icons.delete_outline_rounded, () {
+                  if (!_busy) _delete(inc);
+                }, destructive: true),
             ],
           ),
           const SizedBox(width: 8),
         ],
       ),
-      bottomNavigationBar: _buildActionBar(inc),
+      bottomNavigationBar: IncidentPermissions.canChangeStatus
+          ? _buildActionBar(inc)
+          : null,
       body: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
