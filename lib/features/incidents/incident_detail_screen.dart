@@ -18,6 +18,7 @@ import '../../models/vehicle.dart';
 import '../../repositories/incident_repository.dart';
 import '../../repositories/vehicle_repository.dart';
 import 'location/incident_map.dart';
+import 'incident_pdf.dart';
 import 'incident_permissions.dart';
 import 'location/location_picker_screen.dart';
 import 'widgets/incident_sheets.dart';
@@ -42,6 +43,20 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
   bool _loading = true;
   bool _busy = false;
   bool _didChange = false;
+  bool _exporting = false;
+
+  Future<void> _exportPdf() async {
+    final view = _view;
+    if (view == null) return;
+    setState(() => _exporting = true);
+    try {
+      await shareIncidentPdf(view, _history);
+    } catch (e) {
+      if (mounted) showSnack(context, 'Impossible de générer le PDF : $e');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
   @override
   void initState() {
@@ -206,8 +221,26 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
         ),
         title: Text('${inc.type.label} #${inc.id}'),
         actions: [
+          IconButton(
+            tooltip: 'Télécharger le rapport PDF',
+            onPressed: _exporting ? null : _exportPdf,
+            icon: _exporting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                  )
+                : const Icon(Icons.picture_as_pdf_rounded),
+          ),
           DetailMenu(
             items: [
+              DetailMenuItem(
+                'Télécharger le PDF',
+                Icons.picture_as_pdf_rounded,
+                () {
+                  if (!_exporting) _exportPdf();
+                },
+              ),
               if (IncidentPermissions.canEdit)
                 DetailMenuItem('Modifier', Icons.edit_rounded, () {
                   if (!_busy) _edit(inc);
