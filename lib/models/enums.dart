@@ -58,7 +58,9 @@ enum VehicleAvailability {
   disponible('Disponible'),
   louee('Louée'),
   enEntretien('En entretien'),
-  indisponible('Indisponible');
+  documentsExpires('Docs expirés'),
+  indisponible('Indisponible'),
+  archivee('Archivé');
 
   const VehicleAvailability(this.label);
   final String label;

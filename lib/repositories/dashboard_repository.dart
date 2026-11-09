@@ -81,16 +81,22 @@ class DashboardRepository {
                WHERE m.vehicle_id = v.id AND m.statut = 'en_cours') AS in_maint,
         EXISTS(SELECT 1 FROM rentals r
                WHERE r.vehicle_id = v.id AND r.statut = 'en_cours'
-                 AND r.date_debut <= ? AND r.date_fin >= ?) AS rented
+                 AND r.date_debut <= ? AND r.date_fin >= ?) AS rented,
+        EXISTS(SELECT 1 FROM vehicle_documents d
+               WHERE d.vehicle_id = v.id
+                 AND d.type IN ('assurance','visite_technique')
+                 AND d.date_expiration < ?) AS docs_expired
       FROM vehicles v
-    ''', [today, today]);
+      WHERE v.archive = 0
+    ''', [today, today, today]);
     var available = 0, rented = 0, maint = 0, unavailable = 0;
     for (final r in fleetRows) {
       if ((r['in_maint'] as int) == 1) {
         maint++;
       } else if ((r['rented'] as int) == 1) {
         rented++;
-      } else if ((r['disponible'] as int) == 0) {
+      } else if ((r['disponible'] as int) == 0 ||
+          (r['docs_expired'] as int) == 1) {
         unavailable++;
       } else {
         available++;

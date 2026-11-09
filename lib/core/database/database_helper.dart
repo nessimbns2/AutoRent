@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'demo_data.dart';
 import 'incident_schema.dart';
+import 'vehicle_schema.dart';
 
 class DatabaseHelper {
   DatabaseHelper._();
@@ -16,7 +17,12 @@ class DatabaseHelper {
   /// v4: incident status history + incident map position (see
   ///     IncidentSchema). v3 was only used on the incident branch.
   /// v7: user module — recovery key, login lockout, 2FA (TOTP), activity log.
-  static const _dbVersion = 7;
+  /// v8: vehicle module — technical sheet, archiving and administrative
+  ///     documents with expiry dates (see VehicleSchema).
+  static const _dbVersion = 8;
+
+  /// Current schema version (used by tests instead of a hard-coded number).
+  static const schemaVersion = _dbVersion;
 
   Database? _db;
 
@@ -41,6 +47,7 @@ class DatabaseHelper {
     await IncidentSchema.addCoordinates(db);
     await DemoData.seedAccounts(db);
     await DemoData.seedFleet(db);
+    await VehicleSchema.seedDemoDetails(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldV, int newV) async {
@@ -107,6 +114,11 @@ class DatabaseHelper {
       }
       await db.execute(_userActivityTable);
       await db.execute(_userActivityIndex);
+    }
+    // v8 (vehicle module): technical sheet, archiving, documents + expiry.
+    if (oldV < 8) {
+      await VehicleSchema.migrate(db);
+      await VehicleSchema.seedDemoDetails(db);
     }
   }
 
@@ -181,9 +193,20 @@ class DatabaseHelper {
       immatriculation TEXT NOT NULL UNIQUE,
       prix_par_jour   REAL NOT NULL CHECK (prix_par_jour > 0),
       disponible      INTEGER NOT NULL DEFAULT 1 CHECK (disponible IN (0,1)),
-      created_at      TEXT NOT NULL
+      created_at      TEXT NOT NULL,
+      categorie       TEXT,
+      carburant       TEXT,
+      boite           TEXT,
+      places          INTEGER,
+      annee           INTEGER,
+      couleur         TEXT,
+      kilometrage     INTEGER,
+      archive         INTEGER NOT NULL DEFAULT 0,
+      archived_at     TEXT
     )
     ''',
+    VehicleSchema.documentsTable,
+    VehicleSchema.documentsIndex,
     '''
     CREATE TABLE vehicle_photos (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,

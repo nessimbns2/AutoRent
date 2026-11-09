@@ -26,8 +26,28 @@ class Validators {
         : 'Numéro de téléphone invalide';
   }
 
-  static String? plate(String? v) =>
-      (v == null || v.trim().length < 4) ? 'Immatriculation invalide' : null;
+  /// Tunisian plate: series (1–3 digits) + "TUN" + number (1–4 digits),
+  /// e.g. "123 TUN 4567".
+  static final tunisianPlate = RegExp(r'^\d{1,3} TUN \d{1,4}$');
+
+  static String? plate(String? v) {
+    final p = (v ?? '').trim().toUpperCase();
+    if (p.isEmpty) return "L'immatriculation est obligatoire";
+    return tunisianPlate.hasMatch(p)
+        ? null
+        : 'Format attendu : 123 TUN 4567';
+  }
+
+  /// Optional whole number between [min] and [max].
+  static String? optionalIntRange(String? v, int min, int max, String field) {
+    final t = (v ?? '').trim().replaceAll(' ', '');
+    if (t.isEmpty) return null;
+    final n = int.tryParse(t);
+    if (n == null || n < min || n > max) {
+      return '$field doit être entre $min et $max';
+    }
+    return null;
+  }
 
   static String? positiveNumber(String? v, [String field = 'Valeur']) {
     final n = double.tryParse((v ?? '').replaceAll(',', '.'));

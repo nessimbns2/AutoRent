@@ -7,6 +7,7 @@ import '../core/utils/app_exception.dart';
 import '../core/utils/formatters.dart';
 import '../models/enums.dart';
 import '../models/rental.dart';
+import 'vehicle_document_repository.dart';
 import '../models/rental_stats.dart';
 import 'dashboard_repository.dart' show MonthRevenue;
 
@@ -135,6 +136,10 @@ class RentalRepository {
       throw const AppException(
           'Prolongation impossible : le véhicule est déjà réservé sur cette période.');
     }
+    // Insurance and roadworthiness test must cover the extended period.
+    final docIssue =
+        await VehicleDocumentRepository().blockingIssue(r.vehicleId, newEnd);
+    if (docIssue != null) throw AppException(docIssue);
     final updated = r.copyWith(
       endDate: newEnd,
       totalPrice: BusinessRules.extendedTotal(r, newEnd),

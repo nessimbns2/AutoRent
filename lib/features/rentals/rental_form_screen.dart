@@ -19,6 +19,7 @@ import '../../models/vehicle.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/maintenance_repository.dart';
 import '../../repositories/rental_repository.dart';
+import '../../repositories/vehicle_document_repository.dart';
 import '../../repositories/vehicle_repository.dart';
 import '../../core/services/contract_mailer.dart';
 import 'widgets/booking_calendar.dart';
@@ -175,6 +176,10 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
       if (await _maintenanceRepo.hasActiveMaintenance(_selectedVehicleId!)) {
         throw const AppException(Strings.vehicleInMaintenance);
       }
+      // Insurance and roadworthiness test must cover the whole rental.
+      final docIssue = await VehicleDocumentRepository()
+          .blockingIssue(_selectedVehicleId!, _endDate);
+      if (docIssue != null) throw AppException(docIssue);
       final overlap = await _rentalRepo.hasOverlap(
         _selectedVehicleId!,
         _startDate,

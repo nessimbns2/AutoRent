@@ -1,4 +1,5 @@
 import '../../models/rental.dart';
+import '../../models/vehicle_document.dart';
 
 /// Agency business rules shared by the notifications, the rental screens
 /// and the tests.
@@ -17,7 +18,27 @@ class BusinessRules {
   /// Pending incidents older than this are escalated to "urgent".
   static const incidentEscalationDays = 2;
 
+  /// Documents expiring within this many days are flagged "bientôt expiré".
+  static const documentWarningDays = 30;
+
+  /// Documents expiring within this many days trigger a same-day alert.
+  static const documentUrgentDays = 7;
+
   static DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  /// Days from [today] until [date] (negative when in the past).
+  static int daysUntil(DateTime date, [DateTime? today]) =>
+      _day(date).difference(_day(today ?? DateTime.now())).inDays;
+
+  /// Validity of an administrative document expiring on [expiresOn].
+  static DocumentStatus documentStatus(DateTime? expiresOn,
+      [DateTime? today]) {
+    if (expiresOn == null) return DocumentStatus.missing;
+    final d = daysUntil(expiresOn, today);
+    if (d < 0) return DocumentStatus.expired;
+    if (d <= documentWarningDays) return DocumentStatus.expiringSoon;
+    return DocumentStatus.valid;
+  }
 
   /// Number of full days between the planned return date and [today].
   static int lateDays(DateTime endDate, [DateTime? today]) {

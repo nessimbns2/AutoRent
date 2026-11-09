@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../models/enums.dart';
 import '../../models/rental.dart';
+import '../../models/vehicle.dart';
+import '../../models/vehicle_document.dart';
+import '../constants/business_rules.dart';
 import 'shared_widgets.dart';
 
 // Semantic colours & icons for every status enum, so lists, details and the
@@ -48,7 +51,9 @@ Color vehicleAvailabilityColor(VehicleAvailability s) => switch (s) {
       VehicleAvailability.disponible => AppColors.success,
       VehicleAvailability.louee => AppColors.info,
       VehicleAvailability.enEntretien => AppColors.warning,
+      VehicleAvailability.documentsExpires => AppColors.violet,
       VehicleAvailability.indisponible => AppColors.danger,
+      VehicleAvailability.archivee => AppColors.muted,
     };
 
 IconData maintenanceTypeIcon(String type) => switch (type) {
@@ -59,6 +64,42 @@ IconData maintenanceTypeIcon(String type) => switch (type) {
       'Batterie' => Icons.battery_charging_full_rounded,
       _ => Icons.build_rounded,
     };
+
+Color documentStatusColor(DocumentStatus s) => switch (s) {
+      DocumentStatus.valid => AppColors.success,
+      DocumentStatus.expiringSoon => AppColors.warning,
+      DocumentStatus.expired => AppColors.danger,
+      DocumentStatus.missing => AppColors.muted,
+    };
+
+IconData documentTypeIcon(DocumentType t) => switch (t) {
+      DocumentType.assurance => Icons.shield_rounded,
+      DocumentType.visiteTechnique => Icons.fact_check_rounded,
+      DocumentType.vignette => Icons.receipt_rounded,
+      DocumentType.carteGrise => Icons.badge_rounded,
+    };
+
+IconData fuelIcon(FuelType f) => switch (f) {
+      FuelType.essence => Icons.local_gas_station_rounded,
+      FuelType.diesel => Icons.local_gas_station_outlined,
+      FuelType.hybride => Icons.energy_savings_leaf_rounded,
+      FuelType.electrique => Icons.ev_station_rounded,
+    };
+
+/// "Expire dans 5 j", "Expirée depuis 2 j", "Valide jusqu'au …".
+StatusChip documentStatusChip(DateTime? expiresOn) {
+  final s = BusinessRules.documentStatus(expiresOn);
+  if (expiresOn == null) {
+    return StatusChip(label: s.label, color: documentStatusColor(s));
+  }
+  final d = BusinessRules.daysUntil(expiresOn);
+  final label = switch (s) {
+    DocumentStatus.expired => 'Expiré (${-d} j)',
+    DocumentStatus.expiringSoon => d == 0 ? "Expire aujourd'hui" : 'Expire dans $d j',
+    _ => 'Valide',
+  };
+  return StatusChip(label: label, color: documentStatusColor(s));
+}
 
 /// A rental still "en cours" after its end date is overdue.
 bool isRentalOverdue(Rental r) {

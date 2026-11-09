@@ -979,11 +979,16 @@ class PhotoPickerField extends StatefulWidget {
   final List<String> fileNames;
   final int maxPhotos;
   final ValueChanged<List<String>> onChanged;
+
+  /// Shows a "Couverture" label on the first photo and a star on the others
+  /// to make them the cover (moved to the first position).
+  final bool coverSelectable;
   const PhotoPickerField({
     super.key,
     required this.fileNames,
     required this.onChanged,
     this.maxPhotos = 6,
+    this.coverSelectable = false,
   });
 
   @override
@@ -1017,6 +1022,12 @@ class _PhotoPickerFieldState extends State<PhotoPickerField> {
 
   void _removePhoto(int i) {
     setState(() => _files.removeAt(i));
+    widget.onChanged(_files);
+  }
+
+  void _makeCover(int i) {
+    if (i == 0) return;
+    setState(() => _files.insert(0, _files.removeAt(i)));
     widget.onChanged(_files);
   }
 
@@ -1066,6 +1077,46 @@ class _PhotoPickerFieldState extends State<PhotoPickerField> {
                       child: CarImage(fileName: e.value, width: 82, height: 82),
                     ),
                   ),
+                  if (widget.coverSelectable && e.key == 0)
+                    Positioned(
+                      left: 0,
+                      right: 10,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.brand,
+                          borderRadius: const BorderRadius.vertical(
+                              bottom: Radius.circular(AppRadius.md)),
+                        ),
+                        child: const Text('Couverture',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  if (widget.coverSelectable && e.key > 0)
+                    Positioned(
+                      left: 4,
+                      bottom: 4,
+                      child: Tooltip(
+                        message: 'Définir comme couverture',
+                        child: GestureDetector(
+                          onTap: () => _makeCover(e.key),
+                          child: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.55),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.star_outline_rounded,
+                                size: 15, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
                   Positioned(
                     top: 0,
                     right: 4,

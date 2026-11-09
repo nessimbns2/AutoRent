@@ -14,6 +14,7 @@ import '../../models/rental.dart';
 import '../../models/vehicle.dart';
 import '../../repositories/maintenance_repository.dart';
 import '../../repositories/rental_repository.dart';
+import '../../repositories/vehicle_document_repository.dart';
 import '../../repositories/vehicle_repository.dart';
 import '../../core/services/contract_pdf.dart';
 import 'widgets/booking_calendar.dart';
@@ -72,6 +73,13 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
             'Impossible : ce véhicule est en entretien. Terminez l\'entretien ou changez de véhicule.',
             kind: SnackKind.error);
       }
+      return;
+    }
+    // Insurance / roadworthiness test must be valid for the whole rental.
+    final docIssue =
+        await VehicleDocumentRepository().blockingIssue(r.vehicleId, r.endDate);
+    if (docIssue != null) {
+      if (mounted) showSnack(context, docIssue, kind: SnackKind.error);
       return;
     }
     if (!mounted) return;

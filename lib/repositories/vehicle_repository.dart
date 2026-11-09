@@ -22,12 +22,20 @@ class VehicleStats {
 class VehicleRepository {
   Future<Database> get _db => DatabaseHelper.instance.database;
 
-  Future<List<Vehicle>> getAll({bool? availableOnly, String? search}) async {
+  /// Vehicles of the fleet. [availableOnly] = true means "can be offered for
+  /// rental" (manual switch on and not archived). Archived vehicles are
+  /// included unless [includeArchived] is false.
+  Future<List<Vehicle>> getAll({
+    bool? availableOnly,
+    String? search,
+    bool includeArchived = true,
+  }) async {
     final db = await _db;
     final where = <String>[];
     final args = <Object?>[];
-    if (availableOnly == true) where.add('disponible = 1');
+    if (availableOnly == true) where.add('disponible = 1 AND archive = 0');
     if (availableOnly == false) where.add('disponible = 0');
+    if (!includeArchived) where.add('archive = 0');
     if (search != null && search.trim().isNotEmpty) {
       where.add(
           '(LOWER(marque) LIKE ? OR LOWER(modele) LIKE ? OR LOWER(immatriculation) LIKE ?)');
@@ -103,6 +111,34 @@ class VehicleRepository {
     }
   }
 
+  /// Retires a vehicle from the fleet while keeping its whole history
+  /// (rentals, maintenance, incidents). Refused while it is rented or booked.
+  Future<void> archive(int id) async {
+    final db = await _db;
+    final active = Sqflite.firstIntValue(await db.rawQuery(
+            "SELECT COUNT(*) FROM rentals WHERE vehicle_id = ? "
+            "AND statut IN ('reservee','en_cours')",
+            [id])) ??
+        0;
+    if (active > 0) {
+      throw const AppException(
+          'Archivage impossible : ce véhicule a une location en cours ou réservée.');
+    }
+    await db.update(
+      'vehicles',
+      {'archive': 1, 'archived_at': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Puts an archived vehicle back into the fleet.
+  Future<void> restore(int id) async {
+    final db = await _db;
+    await db.update('vehicles', {'archive': 0, 'archived_at': null},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<bool> immatExists(String plate, {int? excludeId}) async {
     final db = await _db;
     final where = excludeId == null
@@ -122,13 +158,20 @@ class VehicleRepository {
     int? excludeRentalId,
   }) async {
     final db = await _db;
-    // Available = disponible=1, no active maintenance en_cours, no overlapping rental
+    // Available = disponible=1, not archived, insurance and roadworthiness
+    // test valid until the end, no active maintenance, no overlapping rental
     final startStr = start.toIso8601String().substring(0, 10);
     final endStr = end.toIso8601String().substring(0, 10);
 
     final rows = await db.rawQuery('''
       SELECT v.* FROM vehicles v
-      WHERE v.disponible = 1
+      WHERE v.disponible = 1 AND v.archive = 0
+        AND NOT EXISTS (
+          SELECT 1 FROM vehicle_documents d
+          WHERE d.vehicle_id = v.id
+            AND d.type IN ('assurance','visite_technique')
+            AND d.date_expiration < ?
+        )
         AND v.id NOT IN (
           SELECT vehicle_id FROM maintenances WHERE statut = 'en_cours'
         )
@@ -140,6 +183,7 @@ class VehicleRepository {
         )
       ORDER BY v.marque, v.modele
     ''', [
+      endStr,
       endStr,
       startStr,
       ?excludeRentalId,
@@ -155,6 +199,7 @@ class VehicleRepository {
     final db = await _db;
     final vehicle = await getById(vehicleId);
     if (vehicle == null) return VehicleAvailability.indisponible;
+    if (vehicle.archived) return VehicleAvailability.archivee;
 
     // Check en_cours maintenance
     final maintenanceRows = await db.query('maintenances',
@@ -172,6 +217,14 @@ class VehicleRepository {
       LIMIT 1
     ''', [vehicleId, today, today]);
     if (rentalRows.isNotEmpty) return VehicleAvailability.louee;
+
+    // Insurance or roadworthiness test expired → cannot be rented.
+    final expired = Sqflite.firstIntValue(await db.rawQuery('''
+      SELECT COUNT(*) FROM vehicle_documents
+      WHERE vehicle_id = ? AND type IN ('assurance','visite_technique')
+        AND date_expiration < ?
+    ''', [vehicleId, today])) ?? 0;
+    if (expired > 0) return VehicleAvailability.documentsExpires;
 
     if (!vehicle.available) return VehicleAvailability.indisponible;
     return VehicleAvailability.disponible;

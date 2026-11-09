@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
 import '../../app/theme.dart';
+import '../../core/constants/business_rules.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ui_helpers.dart';
@@ -11,9 +12,12 @@ import '../../core/widgets/status_chips.dart';
 import '../../models/enums.dart';
 import '../../models/rental.dart';
 import '../../models/vehicle.dart';
+import '../../models/vehicle_document.dart';
 import '../../repositories/rental_repository.dart';
+import '../../repositories/vehicle_document_repository.dart';
 import '../../repositories/vehicle_repository.dart';
 import '../rentals/widgets/rental_tile.dart';
+import 'vehicle_export_actions.dart';
 
 class VehicleDetailScreen extends StatefulWidget {
   final int vehicleId;
@@ -26,6 +30,7 @@ class VehicleDetailScreen extends StatefulWidget {
 class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   final _repo = VehicleRepository();
   final _rentalRepo = RentalRepository();
+  final _docRepo = VehicleDocumentRepository();
   late Future<_VehicleDetailData> _future = _load();
   bool _didChange = false;
   int _photoIndex = 0;
@@ -35,15 +40,21 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     final availability = await _repo.getAvailabilityState(widget.vehicleId);
     final stats = await _repo.getStats(widget.vehicleId);
     final rentals = await _rentalRepo.getViewsByVehicle(widget.vehicleId);
+    final docs = await _docRepo.getByVehicle(widget.vehicleId);
     return _VehicleDetailData(
       vehicle: vehicle,
       availability: availability,
       stats: stats,
       rentals: rentals.take(3).toList(),
+      documents: docs,
     );
   }
 
-  void _reload() => setState(() { _future = _load(); });
+  void _reload() {
+    setState(() {
+      _future = _load();
+    });
+  }
 
   Future<void> _push(String route, Object? args) async {
     final changed = await Navigator.pushNamed(context, route, arguments: args);
@@ -51,6 +62,47 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       _didChange = true;
       _reload();
     }
+  }
+
+  Future<void> _duplicate(Vehicle v) async {
+    final saved = await Navigator.pushNamed(context, Routes.vehicleForm,
+        arguments: VehicleFormArgs(duplicateFromId: v.id));
+    if (saved == true && mounted) {
+      _didChange = true;
+      showSnack(context, 'Copie créée : elle apparaît dans la flotte.',
+          kind: SnackKind.success);
+    }
+  }
+
+  Future<void> _archive(Vehicle v) async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Archiver ce véhicule ?',
+      message:
+          '${v.brand} ${v.model} sera retiré de la flotte et ne pourra plus être loué. '
+          'Son historique (locations, entretiens, incidents) est conservé.',
+      confirmLabel: 'Archiver',
+      icon: Icons.inventory_2_rounded,
+      destructive: false,
+    );
+    if (ok != true) return;
+    try {
+      await _repo.archive(v.id!);
+      if (!mounted) return;
+      showSnack(context, 'Véhicule archivé', kind: SnackKind.success);
+      _didChange = true;
+      _reload();
+    } on AppException catch (e) {
+      if (mounted) showSnack(context, e.message, kind: SnackKind.error);
+    }
+  }
+
+  Future<void> _restore(Vehicle v) async {
+    await _repo.restore(v.id!);
+    if (!mounted) return;
+    showSnack(context, 'Véhicule remis dans la flotte', kind: SnackKind.success);
+    _didChange = true;
+    _reload();
   }
 
   Future<void> _delete(Vehicle vehicle) async {
@@ -67,8 +119,38 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       if (!mounted) return;
       showSnack(context, 'Véhicule supprimé');
       Navigator.pop(context, true);
-    } on AppException catch (e) {
-      if (mounted) showSnack(context, e.message);
+    } on AppException {
+      // The vehicle has a history: offer to archive it instead.
+      if (!mounted) return;
+      final archive = await confirmDialog(
+        context,
+        title: 'Suppression impossible',
+        message:
+            'Ce véhicule a des locations ou des incidents enregistrés. '
+            'Voulez-vous plutôt l\'archiver ? Il sera retiré de la flotte en gardant son historique.',
+        confirmLabel: 'Archiver',
+        icon: Icons.inventory_2_rounded,
+        destructive: false,
+      );
+      if (archive == true && mounted) await _archive(vehicle);
+    }
+  }
+
+  Future<void> _editDocument(
+      Vehicle v, DocumentType type, VehicleDocument? current) async {
+    final changed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _DocumentEditSheet(
+        vehicleId: v.id!,
+        type: type,
+        current: current,
+        repo: _docRepo,
+      ),
+    );
+    if (changed == true && mounted) {
+      _didChange = true;
+      _reload();
     }
   }
 
@@ -97,6 +179,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
           final v = data.vehicle!;
           final avail = data.availability;
           final rentable = avail == VehicleAvailability.disponible;
+          final blocking = DocumentType.values
+              .where((t) =>
+                  t.blocksRental &&
+                  BusinessRules.documentStatus(
+                          data.documents[t]?.expiresOn) ==
+                      DocumentStatus.expired)
+              .toList();
 
           return Scaffold(
             body: CustomScrollView(
@@ -127,10 +216,19 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                         DetailMenuItem('Modifier', Icons.edit_rounded,
                             () => _push(Routes.vehicleForm,
                                 VehicleFormArgs(vehicleId: v.id))),
+                        DetailMenuItem('Dupliquer', Icons.copy_rounded,
+                            () => _duplicate(v)),
                         DetailMenuItem(
                             'Disponibilités',
                             Icons.calendar_month_rounded,
                             () => _push(Routes.availability, IdArgs(v.id!))),
+                        DetailMenuItem('Fiche PDF', Icons.picture_as_pdf_rounded,
+                            () => exportVehicleSheet(context, v.id!)),
+                        v.archived
+                            ? DetailMenuItem('Remettre dans la flotte',
+                                Icons.unarchive_rounded, () => _restore(v))
+                            : DetailMenuItem('Archiver',
+                                Icons.inventory_2_rounded, () => _archive(v)),
                         DetailMenuItem('Supprimer',
                             Icons.delete_outline_rounded, () => _delete(v),
                             destructive: true),
@@ -180,10 +278,42 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                           Icon(Icons.event_outlined,
                               size: 16, color: context.palette.muted),
                           const SizedBox(width: 6),
-                          Text('Ajouté le ${formatShortDate(v.createdAt)}',
-                              style: context.text.bodySmall),
+                          Flexible(
+                            child: Text(
+                                'Ajouté le ${formatShortDate(v.createdAt)}',
+                                style: context.text.bodySmall,
+                                overflow: TextOverflow.ellipsis),
+                          ),
                         ]),
+                        if (v.archived) ...[
+                          const SizedBox(height: 14),
+                          InfoBanner(
+                            icon: Icons.inventory_2_rounded,
+                            color: AppColors.muted,
+                            text:
+                                'Véhicule archivé${v.archivedAt == null ? '' : ' le ${formatDate(v.archivedAt!)}'} : '
+                                'retiré de la flotte, historique conservé.',
+                            action: TextButton(
+                              onPressed: () => _restore(v),
+                              child: const Text('Restaurer'),
+                            ),
+                          ),
+                        ] else if (blocking.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          InfoBanner(
+                            icon: Icons.gavel_rounded,
+                            color: AppColors.danger,
+                            text:
+                                'Location bloquée : ${blocking.map((t) => '${t.label.toLowerCase()} expirée le ${formatDate(data.documents[t]!.expiresOn)}').join(' et ')}. '
+                                'Renouvelez le document pour louer ce véhicule.',
+                          ),
+                        ],
                         const SizedBox(height: 18),
+                        _SpecsCard(
+                          vehicle: v,
+                          onComplete: () => _push(Routes.vehicleForm,
+                              VehicleFormArgs(vehicleId: v.id)),
+                        ),
                         GridView.count(
                           crossAxisCount: 2,
                           shrinkWrap: true,
@@ -215,16 +345,26 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                     : AppColors.danger),
                           ],
                         ),
-                        if (!rentable) ...[
-                          const SizedBox(height: 14),
-                          InfoBanner(
-                            icon: Icons.info_outline_rounded,
-                            color: vehicleAvailabilityColor(avail),
-                            text:
-                                'Ce véhicule ne peut pas être loué pour le moment (${avail.label.toLowerCase()}).',
-                          ),
-                        ],
                         const SizedBox(height: 18),
+                        SectionCard(
+                          title: 'Documents administratifs',
+                          icon: Icons.folder_shared_rounded,
+                          iconColor: AppColors.violet,
+                          children: [
+                            for (final t in DocumentType.values)
+                              _DocumentRow(
+                                type: t,
+                                document: data.documents[t],
+                                onTap: () =>
+                                    _editDocument(v, t, data.documents[t]),
+                              ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Touchez un document pour mettre à jour son échéance.',
+                              style: context.text.bodySmall,
+                            ),
+                          ],
+                        ),
                         SectionCard(
                           title: 'Entretien & sinistres',
                           icon: Icons.build_circle_rounded,
@@ -273,33 +413,42 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
               ],
             ),
             bottomNavigationBar: BottomActionBar(
-              child: Row(children: [
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Prix', style: context.text.bodySmall),
-                    Text.rich(TextSpan(children: [
-                      TextSpan(
-                          text: v.pricePerDay.toStringAsFixed(0),
-                          style: context.text.headlineSmall
-                              ?.copyWith(color: AppColors.brand)),
-                      TextSpan(text: ' DT/j', style: context.text.bodySmall),
-                    ])),
-                  ],
-                ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: PrimaryButton(
-                    label: rentable ? 'Louer maintenant' : avail.label,
-                    icon: rentable ? Icons.key_rounded : Icons.block_rounded,
-                    onPressed: rentable
-                        ? () => _push(Routes.rentalForm,
-                            RentalFormArgs(vehicleId: v.id))
-                        : null,
-                  ),
-                ),
-              ]),
+              child: v.archived
+                  ? PrimaryButton(
+                      label: 'Remettre dans la flotte',
+                      icon: Icons.unarchive_rounded,
+                      onPressed: () => _restore(v),
+                    )
+                  : Row(children: [
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Prix', style: context.text.bodySmall),
+                          Text.rich(TextSpan(children: [
+                            TextSpan(
+                                text: v.pricePerDay.toStringAsFixed(0),
+                                style: context.text.headlineSmall
+                                    ?.copyWith(color: AppColors.brand)),
+                            TextSpan(
+                                text: ' DT/j', style: context.text.bodySmall),
+                          ])),
+                        ],
+                      ),
+                      const SizedBox(width: 18),
+                      Expanded(
+                        child: PrimaryButton(
+                          label: rentable ? 'Louer maintenant' : avail.label,
+                          icon: rentable
+                              ? Icons.key_rounded
+                              : Icons.block_rounded,
+                          onPressed: rentable
+                              ? () => _push(Routes.rentalForm,
+                                  RentalFormArgs(vehicleId: v.id))
+                              : null,
+                        ),
+                      ),
+                    ]),
             ),
           );
         },
@@ -308,6 +457,268 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Technical sheet
+// ─────────────────────────────────────────────────────────────────────────────
+class _SpecsCard extends StatelessWidget {
+  final Vehicle vehicle;
+  final VoidCallback onComplete;
+  const _SpecsCard({required this.vehicle, required this.onComplete});
+
+  @override
+  Widget build(BuildContext context) {
+    final v = vehicle;
+    final specs = <(IconData, String, String?)>[
+      (Icons.category_rounded, 'Catégorie', v.category?.label),
+      (v.fuel == null ? Icons.local_gas_station_rounded : fuelIcon(v.fuel!),
+          'Carburant', v.fuel?.label),
+      (Icons.settings_rounded, 'Boîte', v.gearbox?.label),
+      (Icons.event_seat_rounded, 'Places', v.seats?.toString()),
+      (Icons.event_rounded, 'Année', v.year?.toString()),
+      (Icons.palette_rounded, 'Couleur', v.color),
+      (Icons.speed_rounded, 'Kilométrage',
+          v.mileage == null ? null : '${_thousands(v.mileage!)} km'),
+    ];
+    final missing = specs.where((s) => s.$3 == null).length;
+
+    return SectionCard(
+      title: 'Caractéristiques',
+      icon: Icons.tune_rounded,
+      iconColor: AppColors.info,
+      trailing: missing == 0
+          ? null
+          : TextButton(onPressed: onComplete, child: const Text('Compléter')),
+      children: [
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final s in specs)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: context.palette.surfaceAlt,
+                borderRadius: BorderRadius.circular(AppRadius.sm + 2),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(s.$1, size: 16, color: AppColors.info),
+                const SizedBox(width: 6),
+                Text('${s.$2} : ', style: context.text.bodySmall),
+                Text(s.$3 ?? '—', style: context.text.labelMedium),
+              ]),
+            ),
+        ]),
+      ],
+    );
+  }
+
+  static String _thousands(int n) => n
+      .toString()
+      .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ' ');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Documents
+// ─────────────────────────────────────────────────────────────────────────────
+class _DocumentRow extends StatelessWidget {
+  final DocumentType type;
+  final VehicleDocument? document;
+  final VoidCallback onTap;
+  const _DocumentRow(
+      {required this.type, required this.document, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final status = BusinessRules.documentStatus(document?.expiresOn);
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(children: [
+          IconBadge(
+              icon: documentTypeIcon(type),
+              color: documentStatusColor(status),
+              size: 40,
+              iconSize: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Text(type.label, style: context.text.titleSmall),
+                  if (type.blocksRental)
+                    Text(' *',
+                        style: context.text.titleSmall
+                            ?.copyWith(color: AppColors.violet)),
+                ]),
+                Text(
+                  document == null
+                      ? 'Aucune échéance enregistrée'
+                      : 'Échéance le ${formatDate(document!.expiresOn)}'
+                          '${document!.number == null ? '' : ' · ${document!.number}'}',
+                  style: context.text.bodySmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          documentStatusChip(document?.expiresOn),
+        ]),
+      ),
+    );
+  }
+}
+
+class _DocumentEditSheet extends StatefulWidget {
+  final int vehicleId;
+  final DocumentType type;
+  final VehicleDocument? current;
+  final VehicleDocumentRepository repo;
+  const _DocumentEditSheet({
+    required this.vehicleId,
+    required this.type,
+    required this.current,
+    required this.repo,
+  });
+
+  @override
+  State<_DocumentEditSheet> createState() => _DocumentEditSheetState();
+}
+
+class _DocumentEditSheetState extends State<_DocumentEditSheet> {
+  late DateTime? _date = widget.current?.expiresOn;
+  late final _number =
+      TextEditingController(text: widget.current?.number ?? '');
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _number.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pick() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date ?? now.add(const Duration(days: 365)),
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 15),
+      helpText: "Date d'expiration · ${widget.type.label}",
+    );
+    if (picked != null) setState(() => _date = picked);
+  }
+
+  Future<void> _save() async {
+    if (_date == null) return;
+    setState(() => _saving = true);
+    final n = _number.text.trim();
+    await widget.repo.save(VehicleDocument(
+      vehicleId: widget.vehicleId,
+      type: widget.type,
+      number: n.isEmpty ? null : n,
+      expiresOn: _date!,
+      updatedAt: DateTime.now(),
+    ));
+    if (mounted) Navigator.pop(context, true);
+  }
+
+  Future<void> _remove() async {
+    await widget.repo.remove(widget.vehicleId, widget.type);
+    if (mounted) Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, 0, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [
+                IconBadge(
+                    icon: documentTypeIcon(widget.type),
+                    color: AppColors.violet,
+                    size: 44),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.type.label, style: context.text.titleMedium),
+                      Text(
+                        widget.type.blocksRental
+                            ? 'Obligatoire pour louer le véhicule'
+                            : 'Alerte avant échéance',
+                        style: context.text.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 18),
+              InkWell(
+                onTap: _pick,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: "Date d'expiration",
+                    prefixIcon: Icon(Icons.calendar_today_rounded),
+                  ),
+                  child: Text(_date == null
+                      ? 'Choisir une date'
+                      : formatShortDate(_date!)),
+                ),
+              ),
+              if (_date != null) ...[
+                const SizedBox(height: 8),
+                Align(
+                    alignment: Alignment.centerLeft,
+                    child: documentStatusChip(_date)),
+              ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: _number,
+                decoration: const InputDecoration(
+                  labelText: 'Numéro (police, PV, quittance…)',
+                  prefixIcon: Icon(Icons.numbers_rounded),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(children: [
+                if (widget.current != null) ...[
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.danger,
+                          minimumSize: const Size(0, 54)),
+                      onPressed: _saving ? null : _remove,
+                      child: const Text('Supprimer'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  flex: 2,
+                  child: PrimaryButton(
+                    label: 'Enregistrer',
+                    icon: Icons.check_rounded,
+                    loading: _saving,
+                    onPressed: _date == null ? null : _save,
+                  ),
+                ),
+              ]),
+            ],
+          ),
+        ),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gallery & action rows
+// ─────────────────────────────────────────────────────────────────────────────
 class _Gallery extends StatelessWidget {
   final Vehicle vehicle;
   final int index;
@@ -341,7 +752,6 @@ class _Gallery extends StatelessWidget {
               : CarImage(fileName: photos[i], seed: vehicle.id ?? 0),
         ),
       ),
-      // Bottom fade for legibility
       const IgnorePointer(
         child: DecoratedBox(
           decoration: BoxDecoration(
@@ -426,10 +836,12 @@ class _VehicleDetailData {
   final VehicleAvailability availability;
   final VehicleStats stats;
   final List<RentalView> rentals;
+  final Map<DocumentType, VehicleDocument> documents;
   _VehicleDetailData({
     required this.vehicle,
     required this.availability,
     required this.stats,
     required this.rentals,
+    required this.documents,
   });
 }

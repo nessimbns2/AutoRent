@@ -6,7 +6,9 @@ import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../models/maintenance.dart';
 import '../../models/rental.dart';
+import '../../models/vehicle_document.dart';
 import '../../repositories/rental_repository.dart';
+import '../../repositories/vehicle_document_repository.dart';
 import '../constants/business_rules.dart';
 import '../database/database_helper.dart';
 import '../utils/formatters.dart';
@@ -279,6 +281,46 @@ class NotificationService {
         date: date,
         route: Routes.incidentDetail,
         args: IdArgs(row['id'] as int),
+      ));
+    }
+
+    // 8. Vehicle documents: expired, expiring within 7 days, within 30 days
+    for (final row in await VehicleDocumentRepository()
+        .expiringWithin(BusinessRules.documentWarningDays)) {
+      final d = row.document;
+      final days = BusinessRules.daysUntil(d.expiresOn);
+      final expired = days < 0;
+      final level = expired
+          ? AlertLevel.urgent
+          : days <= BusinessRules.documentUrgentDays
+              ? AlertLevel.today
+              : AlertLevel.upcoming;
+      final blocks = d.type.blocksRental;
+      out.add(AppAlert(
+        id: 'doc-${d.vehicleId}-${d.type.value}-${toIsoDate(d.expiresOn)}-${level.name}',
+        level: level,
+        icon: switch (d.type) {
+          DocumentType.assurance => Icons.shield_rounded,
+          DocumentType.visiteTechnique => Icons.fact_check_rounded,
+          DocumentType.vignette => Icons.receipt_rounded,
+          DocumentType.carteGrise => Icons.badge_rounded,
+        },
+        color: expired
+            ? AppColors.danger
+            : level == AlertLevel.today
+                ? AppColors.warning
+                : AppColors.violet,
+        title: expired
+            ? '${d.type.label} expirée · ${row.vehicleName}'
+            : '${d.type.label} expire ${days == 0 ? "aujourd'hui" : 'dans $days j'} · ${row.vehicleName}',
+        message: expired
+            ? 'Expirée depuis le ${formatShortDate(d.expiresOn)} (${row.plate}).'
+                '${blocks ? ' Location bloquée tant que le document n\'est pas renouvelé.' : ''}'
+            : 'Échéance le ${formatShortDate(d.expiresOn)} (${row.plate}). '
+                '${blocks ? 'Pensez à la renouveler pour pouvoir continuer à louer ce véhicule.' : 'Pensez au renouvellement.'}',
+        date: d.expiresOn,
+        route: Routes.vehicleDetail,
+        args: IdArgs(d.vehicleId),
       ));
     }
 

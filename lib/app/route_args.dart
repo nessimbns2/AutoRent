@@ -20,7 +20,11 @@ class ClientFormArgs {
 
 class VehicleFormArgs {
   final int? vehicleId;
-  const VehicleFormArgs({this.vehicleId});
+
+  /// Pre-fills a new vehicle from this one (plate, photos, mileage and
+  /// documents are left empty).
+  final int? duplicateFromId;
+  const VehicleFormArgs({this.vehicleId, this.duplicateFromId});
 }
 
 class MaintenanceFormArgs {

@@ -125,10 +125,10 @@ Les dates sont calculées par rapport au jour d'installation pour que l'accueil 
    - État de la flotte (disponibles / louées / entretien / indisponibles) et taux d'occupation.
    - Alerte des locations en retard, départs et retours à traiter, entretiens des 14 prochains jours.
 
-3. **Flotte de véhicules**
-   - Filtres par disponibilité calculée (Disponible, Louée, En entretien, Indisponible), tri par prix.
+3. **Flotte de véhicules** (détail ci-dessous)
+   - Fiche technique complète, filtres multicritères, archivage, documents administratifs avec échéances.
    - Fiche détaillée : galerie photo plein écran, tarif, nombre de locations, revenu généré, dernières locations.
-   - Bouton **Louer maintenant**, planification d'entretien, historique, déclaration d'incident.
+   - Bouton **Louer maintenant**, planification d'entretien, historique, déclaration d'incident, fiche PDF.
 
 4. **Contrats de location**
    - Choix du locataire (création rapide intégrée).
@@ -146,10 +146,34 @@ Les dates sont calculées par rapport au jour d'installation pour que l'accueil 
 
 ---
 
+## 🚗 Module Véhicules (base v8)
+
+**CRUD complet**
+- **Fiche technique** : catégorie (citadine, compacte, berline, SUV, utilitaire, luxe), carburant, boîte de vitesses, places, année, couleur, kilométrage — affichée sur les cartes de la flotte (« SUV · Hybride · Auto · 5 pl. »).
+- **Immatriculation tunisienne** validée au format `123 TUN 4567` et mise en forme pendant la saisie (taper `1234567` donne `123 TUN 4567`).
+- **Photo de couverture** : l'étoile d'une photo la place en première position (carte, fiche, PDF).
+- **Dupliquer** une fiche : copie des caractéristiques et du tarif, sans plaque, photos, kilométrage ni documents.
+- **Archiver au lieu de supprimer** : un véhicule ayant un historique est retiré de la flotte (plus louable, absent des statistiques) tout en conservant ses locations, entretiens et incidents ; il peut être remis dans la flotte. L'archivage est refusé pendant une location en cours ou réservée.
+- **Filtres multicritères** (Flotte ➔ ⚙) : catégorie, carburant, boîte, places minimum, fourchette de prix, tri (prix, année, kilométrage).
+
+**Documents administratifs et échéances** (`vehicle_documents`)
+- Assurance, visite technique, vignette et carte grise, avec numéro et date d'expiration (saisis dans le formulaire ou d'un toucher sur la fiche).
+- Statut calculé : *Valide*, *Bientôt expiré* (≤ 30 jours), *Expiré*, *Non renseigné* ; badge « Docs » sur les cartes concernées.
+- **Règle métier** : un véhicule dont l'**assurance** ou la **visite technique** est expirée — ou expire avant la fin de la location — **ne peut pas être loué** : il n'est plus proposé, et la création, la remise des clés et la prolongation sont refusées avec un message explicite. Son état devient « Docs expirés ».
+- **Notifications** : document expiré (urgent), expirant dans 7 jours (aujourd'hui), dans 30 jours (à venir).
+
+**Exports**
+- **Fiche véhicule PDF** (menu ⋯ de la fiche) : identité, photo, caractéristiques, documents et leur statut, activité, dernières locations et entretiens.
+- **Export CSV de la flotte** (Flotte ➔ ⤓) : une ligne par véhicule, ouvrable dans Excel (séparateur `;`, virgule décimale, UTF-8 avec BOM).
+- Les fichiers sont enregistrés dans **Téléchargements** sur ordinateur (bouton « Ouvrir ») ou dans le dossier de l'application sur téléphone (le PDF peut aussi être partagé).
+
+---
+
 ## 🗄️ Base de données SQLite
 
 - Fichier `autorent.db` créé automatiquement au premier lancement (`sqflite`, et `sqflite_common_ffi` sur Windows / Linux / macOS).
-- 8 tables reliées par clés étrangères (`users`, `clients`, `vehicles`, `vehicle_photos`, `maintenances`, `rentals`, `incidents`, `incident_photos`) — voir [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- Tables reliées par clés étrangères (`users`, `clients`, `vehicles`, `vehicle_photos`, `vehicle_documents`, `maintenances`, `rentals`, `incidents`, `incident_photos`…) — voir [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- Version actuelle du schéma : **8** (`DatabaseHelper.schemaVersion`) ; chaque migration est appliquée automatiquement à l'ouverture.
 - Jeu de données de démonstration inséré à la création.
 - *Profil ➔ Base de données SQLite* affiche le nombre d'enregistrements par table et l'emplacement du fichier.
 

@@ -149,7 +149,10 @@ class AppRouter {
         return _page(ClientFormScreen(clientId: a?.clientId), s);
       case Routes.vehicleForm:
         final a = args as VehicleFormArgs?;
-        return _page(VehicleFormScreen(vehicleId: a?.vehicleId), s);
+        return _page(
+            VehicleFormScreen(
+                vehicleId: a?.vehicleId, duplicateFromId: a?.duplicateFromId),
+            s);
       case Routes.maintenanceForm:
         final a = args as MaintenanceFormArgs?;
         return _page(
