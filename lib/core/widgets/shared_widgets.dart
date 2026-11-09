@@ -835,7 +835,8 @@ class AvatarCircle extends StatelessWidget {
             : null,
         image: photoFile != null
             ? DecorationImage(
-                image: FileImage(ImageStorage.fileFor(photoFile!)),
+                image: ResizeImage(FileImage(ImageStorage.fileFor(photoFile!)),
+                    width: 800),
                 fit: BoxFit.cover,
               )
             : null,
@@ -925,6 +926,10 @@ class CarImage extends StatelessWidget {
       fit: fit,
       width: width,
       height: height,
+      // Decode at display size, not full camera resolution.
+      cacheWidth: (width != null && width!.isFinite)
+          ? (width! * MediaQuery.devicePixelRatioOf(context)).round()
+          : 800,
       errorBuilder: (_, _, _) => placeholder,
     );
   }
