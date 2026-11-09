@@ -20,6 +20,7 @@ import '../../repositories/client_repository.dart';
 import '../../repositories/maintenance_repository.dart';
 import '../../repositories/rental_repository.dart';
 import '../../repositories/vehicle_repository.dart';
+import 'widgets/booking_calendar.dart';
 
 class RentalFormScreen extends StatefulWidget {
   final int? rentalId;
@@ -50,6 +51,9 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
   DateTime _endDate =
       DateUtils.dateOnly(DateTime.now()).add(const Duration(days: 1));
   RentalStatus _status = RentalStatus.reservee;
+
+  Set<String> _booked = {};
+  bool _datesChosen = false;
 
   List<Client> _clients = [];
   List<Vehicle> _availableVehicles = [];
@@ -97,18 +101,16 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
         _startDate = _existing!.startDate;
         _endDate = _existing!.endDate;
         _status = _existing!.status;
+        _datesChosen = true;
       }
     }
     await _updateAvailableVehicles();
     if (mounted) setState(() => _loading = false);
   }
 
+  /// Every rentable vehicle; dates are chosen afterwards on its calendar.
   Future<void> _updateAvailableVehicles() async {
-    final list = await _vehicleRepo.getAvailableForRange(
-      _startDate,
-      _endDate,
-      excludeRentalId: widget.rentalId,
-    );
+    final list = await _vehicleRepo.getAll(availableOnly: true);
     // Keep the vehicle of an edited contract selectable.
     if (_isEdit &&
         _selectedVehicleId != null &&
@@ -116,42 +118,24 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
       final v = await _vehicleRepo.getById(_selectedVehicleId!);
       if (v != null) list.insert(0, v);
     }
-    if (mounted) {
-      setState(() {
-        _availableVehicles = list;
-        if (_selectedVehicleId != null &&
-            !_availableVehicles.any((v) => v.id == _selectedVehicleId)) {
-          _selectedVehicleId = null;
-        }
-      });
+    if (_selectedVehicleId != null) {
+      _booked = await _rentalRepo.bookedDays(_selectedVehicleId!,
+          excludeId: widget.rentalId);
     }
+    if (mounted) setState(() => _availableVehicles = list);
   }
 
-  Future<void> _pickDates() async {
-    final range = await showDateRangePicker(
-      context: context,
-      firstDate: _isEdit
-          ? _startDate.subtract(const Duration(days: 365))
-          : DateUtils.dateOnly(DateTime.now()),
-      lastDate: DateTime.now().add(const Duration(days: 730)),
-      initialDateRange: DateTimeRange(start: _startDate, end: _endDate),
-      helpText: 'Période de location',
-      saveText: 'Valider',
-    );
-    if (range != null) {
-      setState(() {
-        _startDate = range.start;
-        _endDate = range.end.isAtSameMomentAs(range.start)
-            ? range.start.add(const Duration(days: 1))
-            : range.end;
-      });
-      await _updateAvailableVehicles();
-    }
-  }
-
-  Future<void> _setDuration(int days) async {
-    setState(() => _endDate = _startDate.add(Duration(days: days)));
-    await _updateAvailableVehicles();
+  Future<void> _selectVehicle(int? id) async {
+    if (id == _selectedVehicleId) return;
+    final booked = id == null
+        ? <String>{}
+        : await _rentalRepo.bookedDays(id, excludeId: widget.rentalId);
+    if (!mounted) return;
+    setState(() {
+      _selectedVehicleId = id;
+      _booked = booked;
+      _datesChosen = false; // dates must be re-picked on this car's calendar
+    });
   }
 
   Future<void> _createNewClient() async {
@@ -174,6 +158,10 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
     }
     if (_selectedVehicleId == null) {
       showSnack(context, 'Veuillez sélectionner un véhicule');
+      return;
+    }
+    if (!_datesChosen) {
+      showSnack(context, 'Choisissez les dates sur le calendrier');
       return;
     }
 
@@ -290,55 +278,9 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
               ],
             ),
 
-            // 2. Period ------------------------------------------------------
+            // 2. Vehicle -----------------------------------------------------
             FormSection(
-              title: '2 · Période',
-              icon: Icons.date_range_rounded,
-              color: AppColors.info,
-              children: [
-                InkWell(
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  onTap: _pickDates,
-                  child: Row(children: [
-                    Expanded(
-                        child: _DateBox(label: 'Départ', date: _startDate)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Column(children: [
-                        const Icon(Icons.arrow_forward_rounded,
-                            color: AppColors.info),
-                        Text('$_days j',
-                            style: context.text.labelSmall
-                                ?.copyWith(color: AppColors.info)),
-                      ]),
-                    ),
-                    Expanded(child: _DateBox(label: 'Retour', date: _endDate)),
-                  ]),
-                ),
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final d in const [1, 3, 7, 14, 30])
-                    ChoiceChip(
-                      label: Text(d == 7
-                          ? '1 semaine'
-                          : d == 14
-                              ? '2 semaines'
-                              : d == 30
-                                  ? '1 mois'
-                                  : '$d jour${d > 1 ? 's' : ''}'),
-                      selected: _days == d,
-                      showCheckmark: false,
-                      selectedColor: AppColors.info.withValues(alpha: 0.15),
-                      labelStyle: context.text.labelMedium?.copyWith(
-                          color: _days == d ? AppColors.info : null),
-                      onSelected: (_) => _setDuration(d),
-                    ),
-                ]),
-              ],
-            ),
-
-            // 3. Vehicle -----------------------------------------------------
-            FormSection(
-              title: '3 · Véhicule',
+              title: '2 · Véhicule',
               icon: Icons.directions_car_rounded,
               color: AppColors.teal,
               children: [
@@ -346,8 +288,7 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
                   const InfoBanner(
                     icon: Icons.event_busy_rounded,
                     color: AppColors.danger,
-                    text:
-                        'Aucun véhicule disponible sur cette période. Essayez d\'autres dates.',
+                    text: 'Aucun véhicule disponible à la location.',
                   )
                 else
                   SizedBox(
@@ -361,16 +302,49 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
                         return _VehicleOption(
                           vehicle: v,
                           selected: v.id == _selectedVehicleId,
-                          onTap: () =>
-                              setState(() => _selectedVehicleId = v.id),
+                          onTap: () => _selectVehicle(v.id),
                         );
                       },
                     ),
                   ),
-                Text(
-                  '${_availableVehicles.length} véhicule(s) libre(s) du ${formatDayMonth(_startDate)} au ${formatDayMonth(_endDate)}',
-                  style: context.text.bodySmall,
-                ),
+              ],
+            ),
+
+            // 3. Period: only once a vehicle is chosen -----------------------
+            FormSection(
+              title: '3 · Période',
+              icon: Icons.date_range_rounded,
+              color: AppColors.info,
+              children: [
+                if (_selectedVehicleId == null)
+                  const InfoBanner(
+                    icon: Icons.directions_car_rounded,
+                    color: AppColors.info,
+                    text:
+                        'Choisissez d\'abord un véhicule pour voir ses jours libres.',
+                  )
+                else ...[
+                  BookingCalendar(
+                    key: ValueKey(_selectedVehicleId),
+                    booked: _booked,
+                    start: _datesChosen ? _startDate : null,
+                    end: _datesChosen ? _endDate : null,
+                    firstDay: _isEdit && _startDate.isBefore(DateTime.now())
+                        ? _startDate
+                        : DateUtils.dateOnly(DateTime.now()),
+                    onChanged: (s, e) => setState(() {
+                      _startDate = s;
+                      _endDate = e;
+                      _datesChosen = true;
+                    }),
+                  ),
+                  Text(
+                    _datesChosen
+                        ? 'Du ${formatDayMonth(_startDate)} au ${formatDayMonth(_endDate)} · $_days jour(s)'
+                        : 'Touchez le jour de départ, puis le jour de retour.',
+                    style: context.text.bodySmall,
+                  ),
+                ],
               ],
             ),
 
@@ -428,32 +402,6 @@ class _RentalFormScreenState extends State<RentalFormScreen> {
       ),
     );
   }
-}
-
-class _DateBox extends StatelessWidget {
-  final String label;
-  final DateTime date;
-  const _DateBox({required this.label, required this.date});
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: context.palette.surfaceAlt,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: context.text.bodySmall),
-            const SizedBox(height: 2),
-            Text(formatShortDate(date), style: context.text.titleSmall),
-            Text(relativeDay(date),
-                style: context.text.labelSmall
-                    ?.copyWith(color: context.palette.muted)),
-          ],
-        ),
-      );
 }
 
 class _VehicleOption extends StatelessWidget {
