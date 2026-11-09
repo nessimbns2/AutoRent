@@ -257,6 +257,13 @@ class _AccountTabState extends State<AccountTab> {
                   onTap: () => _open(Routes.profile),
                 ),
                 _MenuTile(
+                  icon: Icons.shield_rounded,
+                  color: AppColors.success,
+                  title: 'Sécurité du compte',
+                  subtitle: 'Clé de récupération, 2FA et activité',
+                  onTap: () => _open(Routes.security),
+                ),
+                _MenuTile(
                   icon: Icons.logout_rounded,
                   color: AppColors.danger,
                   title: 'Se déconnecter',

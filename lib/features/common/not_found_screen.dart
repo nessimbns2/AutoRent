@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/widgets/shared_widgets.dart';
+
 class NotFoundScreen extends StatelessWidget {
   final String? routeName;
   final String? message;
@@ -7,26 +9,17 @@ class NotFoundScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Page introuvable')),
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.search_off, size: 64, color: Colors.grey),
-              const SizedBox(height: 16),
-              Text(
-                message ?? 'La page "${routeName ?? ''}" est introuvable.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(160, 48)),
-                child: const Text('Retour'),
-              ),
-            ],
+        appBar: AppBar(),
+        body: EmptyState(
+          icon: Icons.explore_off_rounded,
+          title: 'Page introuvable',
+          message: message ?? 'La page « ${routeName ?? ''} » n\'existe pas.',
+        ),
+        bottomNavigationBar: BottomActionBar(
+          child: PrimaryButton(
+            label: 'Retour',
+            icon: Icons.arrow_back_rounded,
+            onPressed: () => Navigator.maybePop(context),
           ),
         ),
       );

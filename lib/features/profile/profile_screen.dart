@@ -1,20 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
-import '../../app/routes.dart';
-import '../../core/constants/strings.dart';
+import '../../app/theme.dart';
 import '../../core/services/image_storage.dart';
 import '../../core/services/password_hasher.dart';
 import '../../core/session/session_manager.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/utils/password_policy.dart';
 import '../../core/utils/ui_helpers.dart';
-import '../../core/utils/validators.dart';
 import '../../core/widgets/password_strength_meter.dart';
+import '../../core/utils/validators.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../models/user.dart';
 import '../../repositories/user_repository.dart';
 
+/// Edit my profile (name, email, photo, password).
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -29,16 +28,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _lastNameController = TextEditingController();
   final _firstNameController = TextEditingController();
   final _emailController = TextEditingController();
-
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   String? _photoFile;
   bool _saving = false;
-  bool _obscureCurrent = true;
-  bool _obscureNew = true;
-  bool _obscureConfirm = true;
+  bool _obscure = true;
 
   User get _currentUser => SessionManager.instance.currentUser!;
 
@@ -64,41 +60,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _pickPhoto() async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera),
-              title: const Text('Appareil photo'),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Galerie'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
-            ),
-            if (_photoFile != null)
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Supprimer la photo',
-                    style: TextStyle(color: Colors.red)),
-                onTap: () {
-                  Navigator.pop(context);
-                  setState(() => _photoFile = null);
-                },
-              ),
-          ],
-        ),
-      ),
+    final source = await pickImageSource(
+      context,
+      onRemove: _photoFile == null
+          ? null
+          : () => setState(() => _photoFile = null),
     );
-
     if (source == null || !mounted) return;
     final file = await ImageStorage.pickAndSave(source);
-    if (file != null && mounted) {
-      setState(() => _photoFile = file);
-    }
+    if (file != null && mounted) setState(() => _photoFile = file);
   }
 
   Future<void> _save() async {
@@ -122,7 +92,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
       if (newPass != _confirmPasswordController.text) {
-        showSnack(context, 'Les mots de passe ne correspondent pas.');
+        showSnack(context, 'Veuillez saisir deux mots de passe identiques.');
         return;
       }
     }
@@ -136,15 +106,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         photoFile: _photoFile,
         clearPhoto: _photoFile == null,
       );
-
       await _userRepo.update(updatedUser);
-
       if (newPass.isNotEmpty) {
         await _userRepo.changePassword(updatedUser.id!, newPass);
       }
-
       await SessionManager.instance.refresh();
-
       if (!mounted) return;
       showSnack(context, 'Profil mis à jour');
       Navigator.pop(context, true);
@@ -159,166 +125,139 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final user = _currentUser;
     return Scaffold(
-      appBar: AppBar(title: const Text('Mon profil')),
-      body: SafeArea(
-        child: ResponsiveCenter(
-          maxWidth: 700,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Form(
-            key: _formKey,
-            child: Column(
+      appBar: AppBar(title: const Text('Modifier mon profil')),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          children: [
+            Center(
+              child: GestureDetector(
+                onTap: _pickPhoto,
+                child: Stack(clipBehavior: Clip.none, children: [
+                  Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: AppColors.brandGradient,
+                    ),
+                    child: AvatarCircle(
+                      initials: user.initials,
+                      photoFile: _photoFile,
+                      size: 104,
+                      color: AppColors.ink3,
+                    ),
+                  ),
+                  Positioned(
+                    right: 0,
+                    bottom: 2,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.brand,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: context.colors.surface, width: 3),
+                      ),
+                      child: const Icon(Icons.photo_camera_rounded,
+                          size: 18, color: Colors.white),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton(
+                onPressed: _pickPhoto,
+                child: const Text('Changer la photo'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            FormSection(
+              title: 'Informations personnelles',
+              icon: Icons.person_rounded,
               children: [
-                Center(
-                  child: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundColor:
-                            Theme.of(context).colorScheme.primaryContainer,
-                        backgroundImage: _photoFile != null
-                            ? FileImage(ImageStorage.fileFor(_photoFile!))
-                                as ImageProvider
-                            : null,
-                        child: _photoFile == null
-                            ? Text(
-                                user.initials,
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onPrimaryContainer,
-                                ),
-                              )
-                            : null,
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: CircleAvatar(
-                          backgroundColor:
-                              Theme.of(context).colorScheme.primary,
-                          radius: 18,
-                          child: IconButton(
-                            icon: const Icon(Icons.camera_alt,
-                                size: 18, color: Colors.white),
-                            onPressed: _pickPhoto,
-                          ),
-                        ),
-                      ),
-                    ],
+                TextFormField(
+                  controller: _firstNameController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                      labelText: 'Prénom',
+                      prefixIcon: Icon(Icons.person_outline_rounded)),
+                  validator: (v) => Validators.required(v, 'Le prénom'),
+                  textInputAction: TextInputAction.next,
+                ),
+                TextFormField(
+                  controller: _lastNameController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                      labelText: 'Nom',
+                      prefixIcon: Icon(Icons.badge_outlined)),
+                  validator: (v) => Validators.required(v, 'Le nom'),
+                  textInputAction: TextInputAction.next,
+                ),
+                TextFormField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.alternate_email_rounded)),
+                  validator: Validators.email,
+                  textInputAction: TextInputAction.next,
+                ),
+              ],
+            ),
+            FormSection(
+              title: 'Sécurité (facultatif)',
+              icon: Icons.lock_rounded,
+              color: AppColors.violet,
+              children: [
+                TextFormField(
+                  controller: _currentPasswordController,
+                  obscureText: _obscure,
+                  decoration: InputDecoration(
+                    labelText: 'Mot de passe actuel',
+                    prefixIcon: const Icon(Icons.lock_outline_rounded),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined),
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                    ),
                   ),
+                  textInputAction: TextInputAction.next,
                 ),
-                const SizedBox(height: 24),
-                SectionCard(
-                  title: 'Informations personnelles',
-                  children: [
-                    TextFormField(
-                      controller: _lastNameController,
-                      decoration: const InputDecoration(labelText: 'Nom'),
-                      validator: (v) => Validators.required(v, 'Le nom'),
-                      textInputAction: TextInputAction.next,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _firstNameController,
-                      decoration: const InputDecoration(labelText: 'Prénom'),
-                      validator: (v) => Validators.required(v, 'Le prénom'),
-                      textInputAction: TextInputAction.next,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(labelText: 'Email'),
-                      validator: Validators.email,
-                      textInputAction: TextInputAction.next,
-                    ),
-                  ],
-                ),
-                SectionCard(
-                  title: 'Changer le mot de passe (optionnel)',
-                  children: [
-                    TextFormField(
-                      controller: _currentPasswordController,
-                      obscureText: _obscureCurrent,
-                      decoration: InputDecoration(
-                        labelText: 'Mot de passe actuel',
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscureCurrent
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined),
-                          onPressed: () => setState(
-                              () => _obscureCurrent = !_obscureCurrent),
-                        ),
-                      ),
-                      textInputAction: TextInputAction.next,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _newPasswordController,
-                      obscureText: _obscureNew,
-                      decoration: InputDecoration(
-                        labelText: 'Nouveau mot de passe',
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscureNew
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined),
-                          onPressed: () =>
-                              setState(() => _obscureNew = !_obscureNew),
-                        ),
-                      ),
-                      textInputAction: TextInputAction.next,
-                    ),
-                    PasswordStrengthMeter(controller: _newPasswordController),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _confirmPasswordController,
-                      obscureText: _obscureConfirm,
-                      decoration: InputDecoration(
-                        labelText: 'Confirmer le mot de passe',
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscureConfirm
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined),
-                          onPressed: () => setState(
-                              () => _obscureConfirm = !_obscureConfirm),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    leading: const Icon(Icons.security),
-                    title: const Text('Sécurité du compte'),
-                    subtitle: const Text(
-                        "Clé de récupération et journal d'activité"),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.pushNamed(context, Routes.security),
+                TextFormField(
+                  controller: _newPasswordController,
+                  obscureText: _obscure,
+                  decoration: const InputDecoration(
+                    labelText: 'Nouveau mot de passe',
+                    prefixIcon: Icon(Icons.key_rounded),
                   ),
+                  textInputAction: TextInputAction.next,
                 ),
-                const SizedBox(height: 4),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _save,
-                    child: _saving
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text(Strings.save),
+                PasswordStrengthMeter(controller: _newPasswordController),
+                TextFormField(
+                  controller: _confirmPasswordController,
+                  obscureText: _obscure,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirmer le nouveau mot de passe',
+                    prefixIcon: Icon(Icons.key_rounded),
                   ),
                 ),
               ],
             ),
-          ),
+          ],
         ),
       ),
-    ),
-  );
-}
+      bottomNavigationBar: BottomActionBar(
+        child: PrimaryButton(
+          label: 'Enregistrer',
+          icon: Icons.check_rounded,
+          loading: _saving,
+          onPressed: _save,
+        ),
+      ),
+    );
+  }
 }

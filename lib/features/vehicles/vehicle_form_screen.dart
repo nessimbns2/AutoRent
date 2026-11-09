@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/strings.dart';
+import '../../app/theme.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/utils/validators.dart';
@@ -25,6 +25,11 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
   final _plateController = TextEditingController();
   final _priceController = TextEditingController();
 
+  static const _popularBrands = [
+    'Peugeot', 'Renault', 'Toyota', 'Volkswagen', 'Kia', 'Hyundai',
+    'Dacia', 'Citroën', 'Fiat', 'Seat',
+  ];
+
   bool _available = true;
   List<String> _photos = [];
   Vehicle? _existing;
@@ -46,7 +51,7 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
         _brandController.text = _existing!.brand;
         _modelController.text = _existing!.model;
         _plateController.text = _existing!.plate;
-        _priceController.text = _existing!.pricePerDay.toStringAsFixed(2);
+        _priceController.text = _existing!.pricePerDay.toStringAsFixed(0);
         _available = _existing!.available;
         _photos = List<String>.from(_existing!.photos);
       }
@@ -66,7 +71,6 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-
     try {
       final price = double.parse(_priceController.text.replaceAll(',', '.'));
       final vehicle = Vehicle(
@@ -79,7 +83,6 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
         photos: _photos,
         createdAt: _existing?.createdAt ?? DateTime.now(),
       );
-
       if (_isEdit) {
         await _repo.update(vehicle);
         if (!mounted) return;
@@ -105,89 +108,122 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
       appBar: AppBar(
         title: Text(_isEdit ? 'Modifier le véhicule' : 'Nouveau véhicule'),
       ),
-      body: SafeArea(
-        child: ResponsiveCenter(
-          maxWidth: 750,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          children: [
+            FormSection(
+              title: 'Photos',
+              icon: Icons.photo_camera_back_rounded,
+              color: AppColors.violet,
               children: [
-                TextFormField(
-                  controller: _brandController,
-                  decoration: const InputDecoration(labelText: 'Marque'),
-                  validator: (v) => Validators.required(v, 'La marque'),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _modelController,
-                  decoration: const InputDecoration(labelText: 'Modèle'),
-                  validator: (v) => Validators.required(v, 'Le modèle'),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _plateController,
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: const InputDecoration(
-                    labelText: 'Immatriculation (ex: 123 TUN 4567)',
-                  ),
-                  validator: Validators.plate,
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _priceController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Prix de location par jour (DT)',
-                  ),
-                  validator: (v) => Validators.positiveNumber(v, 'Le prix'),
-                  textInputAction: TextInputAction.done,
-                ),
-                const SizedBox(height: 12),
-                SwitchListTile(
-                  title: const Text('Disponible à la location'),
-                  subtitle: const Text(
-                    'Interrupteur manuel activant ou désactivant la mise en location',
-                  ),
-                  value: _available,
-                  onChanged: (val) => setState(() => _available = val),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Photos du véhicule (maximum 6)',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
                 PhotoPickerField(
                   fileNames: _photos,
                   maxPhotos: 6,
                   onChanged: (list) => setState(() => _photos = list),
                 ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _save,
-                    child: _saving
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text(Strings.save),
+                Text('La première photo sert de couverture (6 maximum).',
+                    style: context.text.bodySmall),
+              ],
+            ),
+            FormSection(
+              title: 'Identification',
+              icon: Icons.directions_car_rounded,
+              children: [
+                TextFormField(
+                  controller: _brandController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Marque',
+                    prefixIcon: Icon(Icons.local_offer_outlined),
+                  ),
+                  validator: (v) => Validators.required(v, 'La marque'),
+                  textInputAction: TextInputAction.next,
+                ),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final b in _popularBrands)
+                      ActionChip(
+                        label: Text(b),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () =>
+                            setState(() => _brandController.text = b),
+                      ),
+                  ],
+                ),
+                TextFormField(
+                  controller: _modelController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Modèle',
+                    prefixIcon: Icon(Icons.directions_car_outlined),
+                  ),
+                  validator: (v) => Validators.required(v, 'Le modèle'),
+                  textInputAction: TextInputAction.next,
+                ),
+                TextFormField(
+                  controller: _plateController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Immatriculation',
+                    hintText: '123 TUN 4567',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                  ),
+                  validator: Validators.plate,
+                  textInputAction: TextInputAction.next,
+                ),
+              ],
+            ),
+            FormSection(
+              title: 'Tarification & disponibilité',
+              icon: Icons.payments_rounded,
+              color: AppColors.success,
+              children: [
+                TextFormField(
+                  controller: _priceController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Prix par jour',
+                    prefixIcon: Icon(Icons.sell_outlined),
+                    suffixText: 'DT',
+                  ),
+                  validator: (v) => Validators.positiveNumber(v, 'Le prix'),
+                  textInputAction: TextInputAction.done,
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: context.palette.surfaceAlt,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                  ),
+                  child: SwitchListTile(
+                    value: _available,
+                    onChanged: (val) => setState(() => _available = val),
+                    title: const Text('Disponible à la location'),
+                    subtitle: Text(
+                      _available
+                          ? 'Le véhicule peut être réservé.'
+                          : 'Le véhicule est retiré de la location.',
+                      style: context.text.bodySmall,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
+          ],
         ),
       ),
-    ),
-  );
-}
+      bottomNavigationBar: BottomActionBar(
+        child: PrimaryButton(
+          label: _isEdit ? 'Enregistrer les modifications' : 'Ajouter le véhicule',
+          icon: Icons.check_rounded,
+          loading: _saving,
+          onPressed: _save,
+        ),
+      ),
+    );
+  }
 }

@@ -2,15 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
+import '../../app/theme.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/widgets/shared_widgets.dart';
-import '../../core/widgets/status_chips.dart';
 import '../../models/client.dart';
+import '../../models/enums.dart';
 import '../../models/rental.dart';
 import '../../repositories/client_repository.dart';
 import '../../repositories/rental_repository.dart';
+import '../rentals/widgets/rental_tile.dart';
 
 class ClientDetailScreen extends StatefulWidget {
   final int clientId;
@@ -24,28 +26,21 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   final _clientRepo = ClientRepository();
   final _rentalRepo = RentalRepository();
 
-  late Future<_ClientDetailData> _future = _load();
+  late Future<_Data> _future = _load();
   bool _didChange = false;
 
-  Future<_ClientDetailData> _load() async {
+  Future<_Data> _load() async {
     final client = await _clientRepo.getById(widget.clientId);
-    final rentals = await _rentalRepo.getByClient(widget.clientId);
-    return _ClientDetailData(client: client, rentals: rentals);
+    final rentals =
+        await _rentalRepo.queryViews('r.client_id = ?', [widget.clientId]);
+    return _Data(client, rentals);
   }
 
-  void _reload() {
-    setState(() {
-      _future = _load();
-    });
-  }
+  void _reload() => setState(() { _future = _load(); });
 
-  Future<void> _edit(Client client) async {
-    final saved = await Navigator.pushNamed(
-      context,
-      Routes.clientForm,
-      arguments: ClientFormArgs(clientId: client.id),
-    );
-    if (saved == true && mounted) {
+  Future<void> _push(String route, Object? args) async {
+    final changed = await Navigator.pushNamed(context, route, arguments: args);
+    if (changed == true && mounted) {
       _didChange = true;
       _reload();
     }
@@ -54,12 +49,11 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   Future<void> _delete(Client client) async {
     final ok = await confirmDialog(
       context,
-      title: 'Supprimer locataire',
-      message: 'Voulez-vous vraiment supprimer ce locataire ?',
+      title: 'Supprimer ce locataire ?',
+      message: '${client.fullName} sera définitivement supprimé.',
       confirmLabel: 'Supprimer',
     );
     if (ok != true || !mounted) return;
-
     try {
       await _clientRepo.delete(client.id!);
       if (!mounted) return;
@@ -70,24 +64,14 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     }
   }
 
-  Future<void> _newRental(Client client) async {
-    final changed = await Navigator.pushNamed(
-      context,
-      Routes.rentalForm,
-      arguments: RentalFormArgs(clientId: client.id),
-    );
-    if (changed == true && mounted) {
-      _didChange = true;
-      _reload();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: true,
-      onPopInvokedWithResult: (didPop, _) {},
-      child: FutureBuilder<_ClientDetailData>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Navigator.pop(context, _didChange);
+      },
+      child: FutureBuilder<_Data>(
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
@@ -95,131 +79,123 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           }
           if (snap.hasError || snap.data?.client == null) {
             return Scaffold(
-              appBar: AppBar(title: const Text('Détail locataire')),
+              appBar: AppBar(title: const Text('Locataire')),
               body: ErrorView(
-                error: snap.error ?? 'Locataire introuvable',
-                onRetry: _reload,
-              ),
+                  error: snap.error ?? 'Locataire introuvable',
+                  onRetry: _reload),
             );
           }
-          final client = snap.data!.client!;
+          final c = snap.data!.client!;
           final rentals = snap.data!.rentals;
+          final spent = rentals
+              .where((r) => r.rental.status != RentalStatus.annulee)
+              .fold<double>(0, (a, r) => a + r.rental.totalPrice);
+          final initials =
+              '${c.firstName.isNotEmpty ? c.firstName[0] : ''}${c.lastName.isNotEmpty ? c.lastName[0] : ''}'
+                  .toUpperCase();
 
           return Scaffold(
             appBar: AppBar(
-              title: Text(client.fullName),
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
+                icon: const Icon(Icons.arrow_back_rounded),
                 onPressed: () => Navigator.pop(context, _didChange),
               ),
+              title: const Text('Locataire'),
               actions: [
-                IconButton(
-                  icon: const Icon(Icons.edit),
-                  onPressed: () => _edit(client),
-                  tooltip: 'Modifier',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => _delete(client),
-                  tooltip: 'Supprimer',
-                ),
+                DetailMenu(items: [
+                  DetailMenuItem('Modifier', Icons.edit_rounded,
+                      () => _push(Routes.clientForm, ClientFormArgs(clientId: c.id))),
+                  DetailMenuItem('Supprimer', Icons.delete_outline_rounded,
+                      () => _delete(c),
+                      destructive: true),
+                ]),
+                const SizedBox(width: 8),
               ],
             ),
-            body: ResponsiveCenter(
-              maxWidth: 850,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SectionCard(
-                    title: 'Coordonnées',
-                    children: [
-                      LabeledRow(label: 'Nom', value: client.lastName),
-                      LabeledRow(label: 'Prénom', value: client.firstName),
-                      LabeledRow(label: 'Téléphone', value: client.phone),
-                      LabeledRow(
+            body: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+              children: [
+                AppCard(
+                  padding: const EdgeInsets.all(20),
+                  margin: const EdgeInsets.only(bottom: 14),
+                  child: Column(children: [
+                    AvatarCircle(initials: initials, size: 76),
+                    const SizedBox(height: 10),
+                    Text(c.fullName, style: context.text.titleLarge),
+                    Text('Client depuis le ${formatShortDate(c.createdAt)}',
+                        style: context.text.bodySmall),
+                    const SizedBox(height: 16),
+                    Row(children: [
+                      Expanded(
+                        child: InfoTile(
+                            icon: Icons.receipt_long_rounded,
+                            label: 'Locations',
+                            value: '${rentals.length}',
+                            color: AppColors.info),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: InfoTile(
+                            icon: Icons.savings_rounded,
+                            label: 'Dépensé',
+                            value: formatMoneyShort(spent),
+                            color: AppColors.success),
+                      ),
+                    ]),
+                  ]),
+                ),
+                SectionCard(
+                  title: 'Coordonnées',
+                  icon: Icons.contact_page_rounded,
+                  children: [
+                    LabeledRow(
+                        icon: Icons.phone_rounded,
+                        label: 'Téléphone',
+                        value: c.phone.isEmpty ? 'Non renseigné' : c.phone),
+                    LabeledRow(
+                        icon: Icons.alternate_email_rounded,
                         label: 'Email',
-                        value: client.email?.isNotEmpty == true
-                            ? client.email!
-                            : 'Non renseigné',
-                      ),
-                      LabeledRow(
+                        value: c.email?.isNotEmpty == true
+                            ? c.email!
+                            : 'Non renseigné'),
+                    LabeledRow(
+                        icon: Icons.badge_outlined,
                         label: 'N° de permis',
-                        value: client.licenseNumber,
-                      ),
-                      LabeledRow(
-                        label: 'Inscrit le',
-                        value: formatDate(client.createdAt),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.add),
-                      label: const Text('Nouvelle location pour ce client'),
-                      onPressed: () => _newRental(client),
+                        value: c.licenseNumber),
+                  ],
+                ),
+                SectionHeader(title: 'Historique (${rentals.length})'),
+                if (rentals.isEmpty)
+                  const AppCard(
+                    child: Text('Aucune location enregistrée pour ce client.'),
+                  )
+                else
+                  for (final r in rentals)
+                    RentalTile(
+                      view: r,
+                      showClient: false,
+                      onTap: () =>
+                          _push(Routes.rentalDetail, IdArgs(r.rental.id!)),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Historique des locations (${rentals.length})',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  if (rentals.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Text(
-                        'Aucune location enregistrée pour ce client.',
-                        style: TextStyle(fontStyle: FontStyle.italic),
-                      ),
-                    )
-                  else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: rentals.length,
-                      itemBuilder: (context, index) {
-                        final r = rentals[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            title: Text(
-                              '${formatDate(r.startDate)} → ${formatDate(r.endDate)} (${r.days} j)',
-                            ),
-                            subtitle: Text(formatMoney(r.totalPrice)),
-                            trailing: rentalStatusChip(r.status),
-                            onTap: () async {
-                              final changed = await Navigator.pushNamed(
-                                context,
-                                Routes.rentalDetail,
-                                arguments: IdArgs(r.id!),
-                              );
-                              if (changed == true && mounted) {
-                                _didChange = true;
-                                _reload();
-                              }
-                            },
-                          ),
-                        );
-                      },
-                    ),
-                ],
+              ],
+            ),
+            bottomNavigationBar: BottomActionBar(
+              child: PrimaryButton(
+                label: 'Nouvelle location',
+                icon: Icons.car_rental_rounded,
+                onPressed: () =>
+                    _push(Routes.rentalForm, RentalFormArgs(clientId: c.id)),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
       ),
     );
   }
 }
 
-class _ClientDetailData {
+class _Data {
   final Client? client;
-  final List<Rental> rentals;
-  _ClientDetailData({required this.client, required this.rentals});
+  final List<RentalView> rentals;
+  const _Data(this.client, this.rentals);
 }

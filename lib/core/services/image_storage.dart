@@ -1,4 +1,6 @@
 import 'dart:io';
+
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
@@ -8,9 +10,15 @@ class ImageStorage {
 
   static late Directory _dir;
 
-  static Future<void> init() async {
-    final docs = await getApplicationDocumentsDirectory();
-    _dir = Directory(join(docs.path, 'photos'));
+  /// Must run before the database is opened (the demo data copies the
+  /// bundled vehicle photos into this folder). [directory] is for tests.
+  static Future<void> init({Directory? directory}) async {
+    if (directory != null) {
+      _dir = directory;
+    } else {
+      final docs = await getApplicationDocumentsDirectory();
+      _dir = Directory(join(docs.path, 'photos'));
+    }
     if (!await _dir.exists()) await _dir.create(recursive: true);
   }
 
@@ -26,6 +34,18 @@ class ImageStorage {
     final ext = extension(picked.path).isEmpty ? '.jpg' : extension(picked.path);
     final name = '${DateTime.now().microsecondsSinceEpoch}$ext';
     await File(picked.path).copy(join(_dir.path, name));
+    return name;
+  }
+
+  /// Copies a bundled asset (e.g. assets/vehicles/audi_q3.jpg) into the
+  /// photos directory and returns the stored file name.
+  static Future<String> installAsset(String assetPath) async {
+    final data = await rootBundle.load(assetPath);
+    final name = 'demo_${basename(assetPath)}';
+    await fileFor(name).writeAsBytes(
+      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      flush: true,
+    );
     return name;
   }
 

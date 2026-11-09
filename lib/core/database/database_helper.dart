@@ -1,14 +1,22 @@
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
-import '../../core/services/password_hasher.dart';
+import 'demo_data.dart';
+import 'incident_schema.dart';
 
 class DatabaseHelper {
   DatabaseHelper._();
   static final DatabaseHelper instance = DatabaseHelper._();
 
   static const _dbName = 'autorent.db';
-  static const _dbVersion = 2;
+
+  /// v1: initial schema + demo data
+  /// v2: new demo fleet (6 photographed cars) with rentals, maintenance and
+  ///     incidents — replaces the previous vehicles and rentals.
+  /// v4: incident status history + incident map position (see
+  ///     IncidentSchema). v3 was only used on the incident branch.
+  /// v7: user module — recovery key, login lockout, 2FA (TOTP), activity log.
+  static const _dbVersion = 7;
 
   Database? _db;
 
@@ -29,20 +37,74 @@ class DatabaseHelper {
     for (final stmt in _schemaStatements) {
       await db.execute(stmt);
     }
-    await _seed(db);
+    await IncidentSchema.createHistory(db);
+    await IncidentSchema.addCoordinates(db);
+    await DemoData.seedAccounts(db);
+    await DemoData.seedFleet(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldV, int newV) async {
-    if (oldV < 2) {
-      // v2 (user module): recovery key, login lockout, 2FA (TOTP),
-      // and the user_activity log. Existing rows keep working (defaults).
-      await db.execute('ALTER TABLE users ADD COLUMN recovery_key_hash TEXT');
-      await db.execute(
-          'ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0');
-      await db.execute('ALTER TABLE users ADD COLUMN locked_until TEXT');
-      await db.execute('ALTER TABLE users ADD COLUMN totp_secret TEXT');
-      await db.execute(
-          'ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0');
+    // A v2/v3 database from the incident branch already has the history table
+    // but still the old demo fleet: it gets the new fleet too.
+    final oldFleet = oldV < 2 ||
+        (oldV < 4 && await IncidentSchema.hasHistoryTable(db));
+    if (oldV < 4) {
+      await IncidentSchema.createHistory(db);
+      await IncidentSchema.addCoordinates(db);
+    }
+    if (oldFleet) {
+      // Replace every vehicle, rental, maintenance and incident by the new
+      // demo fleet. Users and clients are kept (missing demo clients added).
+      await DemoData.resetFleet(db);
+      await DemoData.seedAccounts(db);
+      await DemoData.seedFleet(db);
+    }
+    // Incidents typed on main before v4 get a "declared" history entry.
+    await IncidentSchema.backfillHistory(db);
+    // v5: maintenance cost, mileage, garage columns.
+    if (oldV < 5) {
+      for (final col in const [
+        'ALTER TABLE maintenances ADD COLUMN cout_estime REAL',
+        'ALTER TABLE maintenances ADD COLUMN cout_reel REAL',
+        'ALTER TABLE maintenances ADD COLUMN kilometrage INTEGER',
+        'ALTER TABLE maintenances ADD COLUMN garage TEXT',
+      ]) {
+        try {
+          await db.execute(col);
+        } catch (_) {
+          // Column already exists — safe to ignore.
+        }
+      }
+    }
+    // v6: immobilisation tracking (started_at, ended_at).
+    if (oldV < 6) {
+      for (final col in const [
+        'ALTER TABLE maintenances ADD COLUMN started_at TEXT',
+        'ALTER TABLE maintenances ADD COLUMN ended_at TEXT',
+      ]) {
+        try {
+          await db.execute(col);
+        } catch (_) {
+          // Column already exists — safe to ignore.
+        }
+      }
+    }
+    // v7 (user module): recovery key, login lockout, 2FA (TOTP) and the
+    // user_activity log. Existing rows keep working (defaults).
+    if (oldV < 7) {
+      for (final col in const [
+        'ALTER TABLE users ADD COLUMN recovery_key_hash TEXT',
+        'ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE users ADD COLUMN locked_until TEXT',
+        'ALTER TABLE users ADD COLUMN totp_secret TEXT',
+        'ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0',
+      ]) {
+        try {
+          await db.execute(col);
+        } catch (_) {
+          // Column already exists (database from the user-module branch).
+        }
+      }
       await db.execute(_userActivityTable);
       await db.execute(_userActivityIndex);
     }
@@ -53,10 +115,26 @@ class DatabaseHelper {
     _db = null;
   }
 
+  /// Full path of the SQLite file on this device.
+  Future<String> get filePath async => join(await getDatabasesPath(), _dbName);
+
+  /// Number of rows per business table (shown in the Profil tab).
+  Future<Map<String, int>> tableCounts() async {
+    final db = await database;
+    const tables = [
+      'users', 'clients', 'vehicles', 'vehicle_photos',
+      'maintenances', 'rentals', 'incidents', 'incident_photos',
+    ];
+    return {
+      for (final t in tables)
+        t: Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $t')) ?? 0
+    };
+  }
+
   // ── Schema ──────────────────────────────────────────────────────────────────
 
   static const _userActivityTable = '''
-    CREATE TABLE user_activity (
+    CREATE TABLE IF NOT EXISTS user_activity (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       action     TEXT NOT NULL,
@@ -65,7 +143,7 @@ class DatabaseHelper {
     )
     ''';
   static const _userActivityIndex =
-      'CREATE INDEX idx_user_activity_user ON user_activity(user_id, created_at)';
+      'CREATE INDEX IF NOT EXISTS idx_user_activity_user ON user_activity(user_id, created_at)';
 
   static const _schemaStatements = <String>[
     '''
@@ -124,7 +202,13 @@ class DatabaseHelper {
       description TEXT,
       statut      TEXT NOT NULL DEFAULT 'planifie'
                   CHECK (statut IN ('planifie','en_cours','termine')),
-      created_at  TEXT NOT NULL
+      created_at  TEXT NOT NULL,
+      cout_estime REAL,
+      cout_reel   REAL,
+      kilometrage INTEGER,
+      garage      TEXT,
+      started_at  TEXT,
+      ended_at    TEXT
     )
     ''',
     'CREATE INDEX idx_maintenances_vehicle ON maintenances(vehicle_id)',
@@ -174,178 +258,4 @@ class DatabaseHelper {
     _userActivityIndex,
   ];
 
-  // ── Seed ────────────────────────────────────────────────────────────────────
-
-  Future<void> _seed(Database db) async {
-    final now = DateTime.now();
-    final ts = now.toIso8601String();
-
-    // Users
-    final adminHash = PasswordHasher.hash('Admin123!');
-    final agentHash = PasswordHasher.hash('Agent123!');
-    final adminId = await db.insert('users', {
-      'nom': 'Administrateur',
-      'prenom': 'AutoRent',
-      'email': 'admin@autorent.tn',
-      'password_hash': adminHash,
-      'created_at': ts,
-    });
-    final agentId = await db.insert('users', {
-      'nom': 'Ben Ali',
-      'prenom': 'Sami',
-      'email': 'agent@autorent.tn',
-      'password_hash': agentHash,
-      'created_at': ts,
-    });
-
-    // Clients
-    final client1 = await db.insert('clients', {
-      'nom': 'Hamdi',
-      'prenom': 'Rania',
-      'telephone': '22334455',
-      'email': 'rania@example.com',
-      'numero_permis': 'P123456',
-      'created_at': ts,
-    });
-    final client2 = await db.insert('clients', {
-      'nom': 'Trabelsi',
-      'prenom': 'Mohamed',
-      'telephone': '55667788',
-      'numero_permis': 'P789012',
-      'created_at': ts,
-    });
-    final client3 = await db.insert('clients', {
-      'nom': 'Bouzid',
-      'prenom': 'Leila',
-      'telephone': '98765432',
-      'email': 'leila.bouzid@example.com',
-      'numero_permis': 'P345678',
-      'created_at': ts,
-    });
-
-    // Vehicles (5)
-    final v1 = await db.insert('vehicles', {
-      'marque': 'Peugeot',
-      'modele': '208',
-      'immatriculation': '123 TUN 4567',
-      'prix_par_jour': 80.0,
-      'disponible': 1,
-      'created_at': ts,
-    });
-    final v2 = await db.insert('vehicles', {
-      'marque': 'Renault',
-      'modele': 'Clio',
-      'immatriculation': '456 TUN 1234',
-      'prix_par_jour': 75.0,
-      'disponible': 1,
-      'created_at': ts,
-    });
-    final v3 = await db.insert('vehicles', {
-      'marque': 'Toyota',
-      'modele': 'Yaris',
-      'immatriculation': '789 TUN 5678',
-      'prix_par_jour': 90.0,
-      'disponible': 1,
-      'created_at': ts,
-    });
-    final v4 = await db.insert('vehicles', {
-      'marque': 'Volkswagen',
-      'modele': 'Golf',
-      'immatriculation': '321 TUN 9876',
-      'prix_par_jour': 100.0,
-      'disponible': 1,
-      'created_at': ts,
-    });
-    await db.insert('vehicles', {
-      'marque': 'Dacia',
-      'modele': 'Logan',
-      'immatriculation': '654 TUN 3210',
-      'prix_par_jour': 60.0,
-      'disponible': 0,
-      'created_at': ts,
-    });
-
-    // Maintenances (3 — one per status)
-    await db.insert('maintenances', {
-      'vehicle_id': v1,
-      'type': 'Vidange',
-      'date': _isoDate(now.subtract(const Duration(days: 10))),
-      'statut': 'termine',
-      'created_at': ts,
-    });
-    await db.insert('maintenances', {
-      'vehicle_id': v2,
-      'type': 'Pneus',
-      'date': _isoDate(now),
-      'statut': 'en_cours',
-      'description': 'Remplacement des pneus avant',
-      'created_at': ts,
-    });
-    await db.insert('maintenances', {
-      'vehicle_id': v3,
-      'type': 'Révision',
-      'date': _isoDate(now.add(const Duration(days: 5))),
-      'statut': 'planifie',
-      'description': 'Révision annuelle',
-      'created_at': ts,
-    });
-
-    // Rentals (3 — reservee / en_cours / terminee)
-    await db.insert('rentals', {
-      'client_id': client1,
-      'vehicle_id': v3,
-      'user_id': adminId,
-      'date_debut': _isoDate(now.add(const Duration(days: 3))),
-      'date_fin': _isoDate(now.add(const Duration(days: 7))),
-      'prix_total': 90.0 * 4,
-      'statut': 'reservee',
-      'created_at': ts,
-    });
-    final r2 = await db.insert('rentals', {
-      'client_id': client2,
-      'vehicle_id': v4,
-      'user_id': agentId,
-      'date_debut': _isoDate(now.subtract(const Duration(days: 2))),
-      'date_fin': _isoDate(now.add(const Duration(days: 3))),
-      'prix_total': 100.0 * 5,
-      'statut': 'en_cours',
-      'created_at': ts,
-    });
-    await db.insert('rentals', {
-      'client_id': client3,
-      'vehicle_id': v1,
-      'user_id': adminId,
-      'date_debut': _isoDate(now.subtract(const Duration(days: 14))),
-      'date_fin': _isoDate(now.subtract(const Duration(days: 10))),
-      'prix_total': 80.0 * 4,
-      'statut': 'terminee',
-      'created_at': ts,
-    });
-
-    // Incidents (2)
-    await db.insert('incidents', {
-      'vehicle_id': v1,
-      'rental_id': null,
-      'reported_by_user_id': agentId,
-      'type': 'accident',
-      'date': _isoDate(now.subtract(const Duration(days: 12))),
-      'lieu': 'Tunis centre',
-      'description': 'Accrochage léger en parking. Pare-choc avant endommagé.',
-      'statut': 'en_attente',
-      'created_at': ts,
-    });
-    await db.insert('incidents', {
-      'vehicle_id': v4,
-      'rental_id': r2,
-      'reported_by_user_id': adminId,
-      'type': 'panne',
-      'date': _isoDate(now.subtract(const Duration(days: 1))),
-      'lieu': 'Autoroute A1 km 54',
-      'description': "Crevaison lors d'un trajet. Roue de secours montée.",
-      'statut': 'resolu',
-      'created_at': ts,
-    });
-  }
-
-  static String _isoDate(DateTime d) => d.toIso8601String().substring(0, 10);
 }

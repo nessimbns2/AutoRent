@@ -16,6 +16,8 @@ import '../features/incidents/incident_form_screen.dart';
 import '../features/maintenances/maintenance_detail_screen.dart';
 import '../features/maintenances/maintenance_form_screen.dart';
 import '../features/maintenances/maintenance_history_screen.dart';
+import '../features/maintenances/maintenance_stats_screen.dart';
+import '../features/notifications/notifications_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/profile/security_screen.dart';
 import '../features/rentals/rental_detail_screen.dart';
@@ -26,6 +28,7 @@ import '../features/users/user_form_screen.dart';
 import '../features/users/user_list_screen.dart';
 import '../features/vehicles/vehicle_detail_screen.dart';
 import '../features/vehicles/vehicle_form_screen.dart';
+import '../features/vehicles/availability_screen.dart';
 import 'route_args.dart';
 import 'routes.dart';
 
@@ -79,6 +82,8 @@ class AppRouter {
             s);
       case Routes.profile:
         return _page(const ProfileScreen(), s);
+      case Routes.notifications:
+        return _page(const NotificationsScreen(), s);
       case Routes.recoveryKey:
         return _page(
             RecoveryKeyScreen(
@@ -111,6 +116,12 @@ class AppRouter {
       case Routes.maintenanceDetail:
         return args is IdArgs
             ? _page(MaintenanceDetailScreen(maintenanceId: args.id), s)
+            : _bad(s);
+      case Routes.maintenanceStats:
+        return _page(const MaintenanceStatsScreen(), s);
+      case Routes.availability:
+        return args is IdArgs
+            ? _page(AvailabilityScreen(vehicleId: args.id), s)
             : _bad(s);
       case Routes.rentalDetail:
         return args is IdArgs

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../app/theme.dart';
+
 import '../../core/services/recovery_key.dart';
 import '../../core/utils/auth_messages.dart';
 import '../../core/utils/password_policy.dart';
@@ -8,6 +10,7 @@ import '../../core/utils/validators.dart';
 import '../../core/widgets/password_strength_meter.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../repositories/user_repository.dart';
+import 'widgets/auth_layout.dart';
 import 'widgets/secret_dialog.dart';
 
 /// Offline password reset: email + recovery key + new password.
@@ -81,96 +84,91 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Mot de passe oublié')),
-      body: ResponsiveCenter(
-        maxWidth: 460,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Entrez votre email et la clé de récupération que vous avez '
-                  'sauvegardée. Aucune connexion internet n\'est nécessaire.',
-                ),
-                const SizedBox(height: 20),
-                TextFormField(
-                  controller: _emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                      labelText: 'Email',
-                      prefixIcon: Icon(Icons.email_outlined)),
-                  validator: Validators.email,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _keyCtrl,
-                  textCapitalization: TextCapitalization.characters,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'Clé de récupération',
-                    hintText: 'XXXX-XXXX-XXXX-XXXX',
-                    prefixIcon: Icon(Icons.key),
-                  ),
-                  validator: (v) => RecoveryKey.looksValid(v ?? '')
-                      ? null
-                      : 'La clé comporte 16 caractères',
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _passCtrl,
-                  obscureText: _obscure,
-                  textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(
-                    labelText: 'Nouveau mot de passe',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                          _obscure ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () => setState(() => _obscure = !_obscure),
-                    ),
-                  ),
-                  validator: PasswordPolicy.validate,
-                ),
-                PasswordStrengthMeter(controller: _passCtrl),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _confirmCtrl,
-                  obscureText: _obscure,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirmer le mot de passe',
-                    prefixIcon: Icon(Icons.lock_outline),
-                  ),
-                  validator: (v) => v != _passCtrl.text
-                      ? 'Les mots de passe ne correspondent pas'
-                      : null,
-                ),
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: _busy ? null : _reset,
-                  child: _busy
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Réinitialiser'),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Clé perdue ? Demandez à un collègue de réinitialiser votre '
-                  'mot de passe depuis la liste des utilisateurs.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
+    return AuthLayout(
+      showBack: true,
+      compactHeader: true,
+      title: 'Mot de passe oublié',
+      subtitle: 'Entrez votre email et la clé de récupération sauvegardée.',
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const InfoBanner(
+              icon: Icons.wifi_off_rounded,
+              color: AppColors.info,
+              text: 'Aucune connexion internet n\'est nécessaire.',
             ),
-          ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                prefixIcon: Icon(Icons.alternate_email_rounded),
+              ),
+              validator: Validators.email,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _keyCtrl,
+              textCapitalization: TextCapitalization.characters,
+              autocorrect: false,
+              enableSuggestions: false,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Clé de récupération',
+                hintText: 'XXXX-XXXX-XXXX-XXXX',
+                prefixIcon: Icon(Icons.key_rounded),
+              ),
+              validator: (v) => RecoveryKey.looksValid(v ?? '')
+                  ? null
+                  : 'La clé comporte 16 caractères',
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _passCtrl,
+              obscureText: _obscure,
+              textInputAction: TextInputAction.next,
+              decoration: InputDecoration(
+                labelText: 'Nouveau mot de passe',
+                prefixIcon: const Icon(Icons.lock_outline_rounded),
+                suffixIcon: IconButton(
+                  icon: Icon(_obscure
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+              validator: PasswordPolicy.validate,
+            ),
+            PasswordStrengthMeter(controller: _passCtrl),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _confirmCtrl,
+              obscureText: _obscure,
+              decoration: const InputDecoration(
+                labelText: 'Confirmer le mot de passe',
+                prefixIcon: Icon(Icons.lock_outline_rounded),
+              ),
+              validator: Validators.confirm(() => _passCtrl.text),
+            ),
+            const SizedBox(height: 22),
+            PrimaryButton(
+              label: 'Réinitialiser',
+              icon: Icons.lock_reset_rounded,
+              loading: _busy,
+              onPressed: _reset,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Clé perdue ? Demandez à un collègue de réinitialiser votre '
+              'mot de passe depuis la liste des utilisateurs.',
+              textAlign: TextAlign.center,
+              style: context.text.bodySmall,
+            ),
+          ],
         ),
       ),
     );
