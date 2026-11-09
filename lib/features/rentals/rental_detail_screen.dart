@@ -16,6 +16,7 @@ import '../../repositories/maintenance_repository.dart';
 import '../../repositories/rental_repository.dart';
 import '../../repositories/vehicle_repository.dart';
 import '../../core/services/contract_pdf.dart';
+import 'widgets/booking_calendar.dart';
 import 'widgets/rental_tile.dart';
 
 class RentalDetailScreen extends StatefulWidget {
@@ -163,12 +164,46 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   /// Extends the contract at the same daily rate.
   Future<void> _extend(Rental r) async {
     final first = r.endDate.add(const Duration(days: 1));
-    final picked = await showDatePicker(
+    final booked =
+        await _repo.bookedDays(r.vehicleId, excludeId: r.id);
+    if (!mounted) return;
+    // Last day we can extend to: the day before the next booking, if any.
+    var limit = first;
+    while (!booked.contains(toIsoDate(limit))) {
+      limit = limit.add(const Duration(days: 1));
+      if (limit.difference(first).inDays > 365) break;
+    }
+    final lastFree = limit.subtract(const Duration(days: 1));
+    final canExtend = !lastFree.isBefore(first);
+    final picked = await showModalBottomSheet<DateTime>(
       context: context,
-      initialDate: first,
-      firstDate: first,
-      lastDate: r.endDate.add(const Duration(days: 365)),
-      helpText: 'Nouvelle date de retour',
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('Nouvelle date de retour', style: ctx.text.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              !canExtend
+                  ? 'Aucun jour libre après le ${formatShortDate(r.endDate)} : le véhicule est réservé.'
+                  : limit.difference(first).inDays > 365
+                      ? 'Prolongation possible sans limite.'
+                      : 'Prolongation possible du ${formatShortDate(first)} au ${formatShortDate(lastFree)}.',
+              style: ctx.text.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            BookingCalendar(
+              booked: booked,
+              firstDay: first,
+              lockedStart: r.endDate,
+              start: r.endDate,
+              onChanged: (_, end) => Navigator.pop(ctx, end),
+            ),
+          ]),
+        ),
+      ),
     );
     if (picked == null || !mounted) return;
     final newTotal = BusinessRules.extendedTotal(r, picked);
