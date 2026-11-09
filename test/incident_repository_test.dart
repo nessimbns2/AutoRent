@@ -12,19 +12,25 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// Tests run against a real SQLite database (via sqflite FFI) created from the
 /// app's schema + seed data, recreated before every test.
 ///
+/// The database lives in a temporary folder: on desktop the default sqflite
+/// FFI folder (.dart_tool/sqflite_common_ffi/databases) is the one the app
+/// itself uses during `flutter run`, so it must never be deleted by a test.
+///
 /// Seed used here: vehicle 1 = Suzuki Swift (128 TUN 4521), vehicle 2 = Škoda Fabia,
 /// rental 5 = Fabia rented by "Jaziri Karim" (en_cours), user 2 = agent.
 void main() {
   late IncidentRepository repo;
+  late Directory tempRoot;
 
   setUpAll(() async {
-    // The demo data copies the bundled car photos into the photos folder.
     TestWidgetsFlutterBinding.ensureInitialized();
-    await ImageStorage.init(
-      directory: Directory.systemTemp.createTempSync('autorent_test_'),
-    );
+    tempRoot = Directory.systemTemp.createTempSync('autorent_test_');
+    // The demo data copies the bundled car photos into the photos folder.
+    await ImageStorage.init(directory: Directory(join(tempRoot.path, 'photos')));
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfiNoIsolate;
+    // Isolated database folder — keeps the developer's app data intact.
+    await databaseFactory.setDatabasesPath(join(tempRoot.path, 'databases'));
   });
 
   setUp(() async {
@@ -35,7 +41,10 @@ void main() {
     repo = IncidentRepository();
   });
 
-  tearDownAll(() => DatabaseHelper.instance.close());
+  tearDownAll(() async {
+    await DatabaseHelper.instance.close();
+    if (tempRoot.existsSync()) tempRoot.deleteSync(recursive: true);
+  });
 
   Incident newIncident({
     int vehicleId = 1,
