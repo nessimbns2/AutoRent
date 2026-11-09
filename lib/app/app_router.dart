@@ -15,6 +15,7 @@ import '../features/incidents/incident_form_screen.dart';
 import '../features/maintenances/maintenance_detail_screen.dart';
 import '../features/maintenances/maintenance_form_screen.dart';
 import '../features/maintenances/maintenance_history_screen.dart';
+import '../features/maintenances/maintenance_stats_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/rentals/rental_detail_screen.dart';
@@ -99,6 +100,8 @@ class AppRouter {
         return args is IdArgs
             ? _page(MaintenanceDetailScreen(maintenanceId: args.id), s)
             : _bad(s);
+      case Routes.maintenanceStats:
+        return _page(const MaintenanceStatsScreen(), s);
       case Routes.availability:
         return args is IdArgs
             ? _page(AvailabilityScreen(vehicleId: args.id), s)

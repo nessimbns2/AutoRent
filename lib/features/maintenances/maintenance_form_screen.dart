@@ -37,6 +37,9 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
   DateTime _date = DateTime.now();
   final _dateController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _costEstimatedController = TextEditingController();
+  final _mileageController = TextEditingController();
+  final _garageController = TextEditingController();
   MaintenanceStatus _status = MaintenanceStatus.planifie;
 
   List<Vehicle> _vehicles = [];
@@ -64,6 +67,11 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
         _date = _existing!.date;
         _dateController.text = formatDate(_date);
         _descriptionController.text = _existing!.description ?? '';
+        _costEstimatedController.text =
+            _existing!.costEstimated?.toStringAsFixed(0) ?? '';
+        _mileageController.text =
+            _existing!.mileage?.toString() ?? '';
+        _garageController.text = _existing!.garage ?? '';
         _status = _existing!.status;
       }
     }
@@ -74,6 +82,9 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
   void dispose() {
     _dateController.dispose();
     _descriptionController.dispose();
+    _costEstimatedController.dispose();
+    _mileageController.dispose();
+    _garageController.dispose();
     super.dispose();
   }
 
@@ -102,6 +113,9 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
     setState(() => _saving = true);
     try {
       final desc = _descriptionController.text.trim();
+      final costText = _costEstimatedController.text.trim();
+      final mileageText = _mileageController.text.trim();
+      final garageText = _garageController.text.trim();
       final maintenance = Maintenance(
         id: _existing?.id,
         vehicleId: _selectedVehicleId!,
@@ -110,6 +124,10 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
         description: desc.isEmpty ? null : desc,
         status: _status,
         createdAt: _existing?.createdAt ?? DateTime.now(),
+        costEstimated: costText.isEmpty ? null : double.tryParse(costText),
+        costActual: _existing?.costActual,
+        mileage: mileageText.isEmpty ? null : int.tryParse(mileageText),
+        garage: garageText.isEmpty ? null : garageText,
       );
       if (_isEdit) {
         await _maintenanceRepo.update(maintenance);
@@ -213,6 +231,43 @@ class _MaintenanceFormScreenState extends State<MaintenanceFormScreen> {
                     alignLabelWithHint: true,
                   ),
                 ),
+              ],
+            ),
+            FormSection(
+              title: 'Coût & kilométrage',
+              icon: Icons.attach_money_rounded,
+              color: AppColors.success,
+              children: [
+                TextFormField(
+                  controller: _costEstimatedController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Coût estimé (DT)',
+                    prefixIcon: Icon(Icons.payments_outlined),
+                  ),
+                ),
+                TextFormField(
+                  controller: _mileageController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Kilométrage (km)',
+                    prefixIcon: Icon(Icons.speed_rounded),
+                  ),
+                ),
+                TextFormField(
+                  controller: _garageController,
+                  decoration: const InputDecoration(
+                    labelText: 'Garage / prestataire',
+                    prefixIcon: Icon(Icons.store_rounded),
+                  ),
+                ),
+              ],
+            ),
+            FormSection(
+              title: 'Statut',
+              icon: Icons.flag_rounded,
+              color: AppColors.info,
+              children: [
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final s in MaintenanceStatus.values)
                     ChoiceChip(

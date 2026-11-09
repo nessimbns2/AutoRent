@@ -15,7 +15,7 @@ class DatabaseHelper {
   ///     incidents — replaces the previous vehicles and rentals.
   /// v4: incident status history + incident map position (see
   ///     IncidentSchema). v3 was only used on the incident branch.
-  static const _dbVersion = 4;
+  static const _dbVersion = 6;
 
   Database? _db;
 
@@ -60,6 +60,34 @@ class DatabaseHelper {
     }
     // Incidents typed on main before v4 get a "declared" history entry.
     await IncidentSchema.backfillHistory(db);
+    // v5: maintenance cost, mileage, garage columns.
+    if (oldV < 5) {
+      for (final col in const [
+        'ALTER TABLE maintenances ADD COLUMN cout_estime REAL',
+        'ALTER TABLE maintenances ADD COLUMN cout_reel REAL',
+        'ALTER TABLE maintenances ADD COLUMN kilometrage INTEGER',
+        'ALTER TABLE maintenances ADD COLUMN garage TEXT',
+      ]) {
+        try {
+          await db.execute(col);
+        } catch (_) {
+          // Column already exists — safe to ignore.
+        }
+      }
+    }
+    // v6: immobilisation tracking (started_at, ended_at).
+    if (oldV < 6) {
+      for (final col in const [
+        'ALTER TABLE maintenances ADD COLUMN started_at TEXT',
+        'ALTER TABLE maintenances ADD COLUMN ended_at TEXT',
+      ]) {
+        try {
+          await db.execute(col);
+        } catch (_) {
+          // Column already exists — safe to ignore.
+        }
+      }
+    }
   }
 
   Future<void> close() async {
@@ -137,7 +165,13 @@ class DatabaseHelper {
       description TEXT,
       statut      TEXT NOT NULL DEFAULT 'planifie'
                   CHECK (statut IN ('planifie','en_cours','termine')),
-      created_at  TEXT NOT NULL
+      created_at  TEXT NOT NULL,
+      cout_estime REAL,
+      cout_reel   REAL,
+      kilometrage INTEGER,
+      garage      TEXT,
+      started_at  TEXT,
+      ended_at    TEXT
     )
     ''',
     'CREATE INDEX idx_maintenances_vehicle ON maintenances(vehicle_id)',
