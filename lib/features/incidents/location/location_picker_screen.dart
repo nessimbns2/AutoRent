@@ -183,7 +183,25 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     });
   }
 
-  void _confirm() => Navigator.pop(context, PickedLocation(_center, _address));
+  Future<void> _confirm() async {
+    var address = _address;
+    // The pin moved but its address isn't known yet (lookup still running or
+    // the debounce hasn't fired): resolve it now so "Lieu" gets filled.
+    if (_resolving || _reverseDebounce?.isActive == true || address == null) {
+      _reverseDebounce?.cancel();
+      _reverseToken++;
+      setState(() => _resolving = true);
+      try {
+        address = await _geo.reverse(_center);
+      } catch (_) {
+        address = null;
+      }
+      if (!mounted) return;
+      setState(() => _resolving = false);
+    }
+    if (!mounted) return;
+    Navigator.pop(context, PickedLocation(_center, address));
+  }
 
   @override
   Widget build(BuildContext context) {

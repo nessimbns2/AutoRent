@@ -14,6 +14,7 @@ import '../../core/widgets/shared_widgets.dart';
 import '../../models/enums.dart';
 import '../../models/incident.dart';
 import '../../repositories/incident_repository.dart';
+import 'incident_permissions.dart';
 import 'incident_stats_screen.dart';
 import 'widgets/incident_sheets.dart';
 import 'widgets/incident_ui.dart';
@@ -254,8 +255,10 @@ class _IncidentsListState extends State<IncidentsList> {
                         : _items.length,
                   ),
                 ),
-                const SizedBox(width: 10),
-                _StatsButton(onTap: _openStats),
+                if (IncidentPermissions.canSeeStats) ...[
+                  const SizedBox(width: 10),
+                  _StatsButton(onTap: _openStats),
+                ],
               ],
             ),
           ),
@@ -338,7 +341,11 @@ class _IncidentsListState extends State<IncidentsList> {
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
             itemCount: _items.length + 1,
             itemBuilder: (context, i) {
-              if (i == 0) return _SwipeHint(status: _status);
+              if (i == 0) {
+                return IncidentPermissions.canChangeStatus
+                    ? _SwipeHint(status: _status)
+                    : const SizedBox.shrink();
+              }
               final item = _items[i - 1];
               return EntranceAnimation(
                 key: ValueKey(item.incident.id),
@@ -607,14 +614,20 @@ class _SwipeableIncidentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final next = item.incident.status.next;
+    // Agents can't change status (swipe right) or delete (swipe left).
+    final next = IncidentPermissions.canChangeStatus
+        ? item.incident.status.next
+        : null;
+    final canDelete = IncidentPermissions.canDelete;
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Dismissible(
         key: ValueKey('dismiss-${item.incident.id}'),
         direction: next == null
-            ? DismissDirection.endToStart
-            : DismissDirection.horizontal,
+            ? (canDelete ? DismissDirection.endToStart : DismissDirection.none)
+            : (canDelete
+                  ? DismissDirection.horizontal
+                  : DismissDirection.startToEnd),
         dismissThresholds: const {
           DismissDirection.startToEnd: 0.35,
           DismissDirection.endToStart: 0.35,
