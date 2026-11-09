@@ -2,163 +2,162 @@ import 'package:flutter/material.dart';
 
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
+import '../../app/theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../core/widgets/status_chips.dart';
 import '../../models/enums.dart';
 import '../../models/incident.dart';
 import '../../repositories/incident_repository.dart';
+import '../rentals/widgets/rental_tile.dart';
 
-class IncidentsTab extends StatefulWidget {
-  const IncidentsTab({super.key});
+/// Incident list with status filters — embedded in the "Suivi" tab.
+class IncidentsList extends StatefulWidget {
+  final int refreshToken;
+  const IncidentsList({super.key, this.refreshToken = 0});
 
   @override
-  State<IncidentsTab> createState() => _IncidentsTabState();
+  State<IncidentsList> createState() => _IncidentsListState();
 }
 
-class _IncidentsTabState extends State<IncidentsTab>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+class _IncidentsListState extends State<IncidentsList> {
   final _repo = IncidentRepository();
+  IncidentStatus _status = IncidentStatus.enAttente;
+  late Future<_Data> _future = _load();
 
-  late Future<List<IncidentView>> _future = _load();
+  Future<_Data> _load() async =>
+      _Data(await _repo.getViewsByStatus(_status), await _repo.countByStatus());
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(() {
-      if (_tabController.indexIsChanging) return;
-      _reload();
-    });
-  }
-
-  IncidentStatus get _currentStatus => switch (_tabController.index) {
-        0 => IncidentStatus.enAttente,
-        1 => IncidentStatus.enCours,
-        _ => IncidentStatus.resolu,
-      };
-
-  Future<List<IncidentView>> _load() => _repo.getViewsByStatus(_currentStatus);
-
-  void _reload() {
-    setState(() {
-      _future = _load();
-    });
-  }
-
-  Future<void> _openForm() async {
-    final saved = await Navigator.pushNamed(
-      context,
-      Routes.incidentForm,
-    );
-    if (saved == true && mounted) _reload();
-  }
+  void _reload() => setState(() { _future = _load(); });
 
   @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  void didUpdateWidget(covariant IncidentsList old) {
+    super.didUpdateWidget(old);
+    if (old.refreshToken != widget.refreshToken) _reload();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openForm,
-        child: const Icon(Icons.add),
-      ),
-      body: Column(
-        children: [
-          TabBar(
-            controller: _tabController,
-            tabs: const [
-              Tab(text: 'En attente'),
-              Tab(text: 'En cours'),
-              Tab(text: 'Résolus'),
+    return FutureBuilder<_Data>(
+      future: _future,
+      builder: (context, snap) {
+        final counts = snap.data?.counts ?? const {};
+        return Column(children: [
+          PillTabs<IncidentStatus>(
+            selected: _status,
+            onChanged: (s) {
+              _status = s;
+              _reload();
+            },
+            tabs: [
+              for (final s in IncidentStatus.values)
+                PillTab(s, s.label, count: counts[s] ?? 0),
             ],
           ),
-          Expanded(
-            child: FutureBuilder<List<IncidentView>>(
-              future: _future,
-              builder: (context, snap) {
-                if (snap.connectionState != ConnectionState.done) {
-                  return const LoadingView();
-                }
-                if (snap.hasError) {
-                  return ErrorView(error: snap.error!, onRetry: _reload);
-                }
-                final list = snap.data ?? [];
-                if (list.isEmpty) {
-                  return const EmptyState(message: 'Aucun incident.');
-                }
-                return RefreshIndicator(
-                  onRefresh: () async => _reload(),
-                  child: ResponsiveCenter(
-                    maxWidth: 900,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: list.length,
-                      itemBuilder: (context, index) {
-                        final item = list[index];
-                        final inc = item.incident;
-                        final isAccident = inc.type == IncidentType.accident;
+          const SizedBox(height: 10),
+          Expanded(child: _list(snap)),
+        ]);
+      },
+    );
+  }
 
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: isAccident
-                                  ? Colors.red.withValues(alpha: 0.15)
-                                  : Colors.orange.withValues(alpha: 0.15),
-                              child: Icon(
-                                isAccident
-                                    ? Icons.car_crash_outlined
-                                    : Icons.build_outlined,
-                                color: isAccident ? Colors.red : Colors.orange,
-                              ),
-                            ),
-                            title: Text(
-                              item.vehicleLabel,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${inc.type.label} • ${formatDate(inc.date)} • ${inc.place}',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  inc.description,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
-                            trailing: incidentStatusChip(inc.status),
-                            isThreeLine: true,
-                            onTap: () async {
-                              final changed = await Navigator.pushNamed(
-                                context,
-                                Routes.incidentDetail,
-                                arguments: IdArgs(inc.id!),
-                              );
-                              if (changed == true && mounted) _reload();
-                            },
-                          ),
-                        );
-                      },
-                    ),
+  Widget _list(AsyncSnapshot<_Data> snap) {
+    if (snap.hasError) return ErrorView(error: snap.error!, onRetry: _reload);
+    if (!snap.hasData) return const LoadingView();
+    final items = snap.data!.items;
+    if (items.isEmpty) {
+      return EmptyState(
+        icon: Icons.verified_user_outlined,
+        title: 'Aucun incident',
+        message: 'Aucun incident « ${_status.label.toLowerCase()} ».',
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: () async => _reload(),
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(20, 2, 20, 96),
+        itemCount: items.length,
+        itemBuilder: (context, i) {
+          final item = items[i];
+          final inc = item.incident;
+          final (name, plate) = splitVehicleLabel(item.vehicleLabel);
+          return AppCard(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(14),
+            onTap: () async {
+              final changed = await Navigator.pushNamed(
+                context,
+                Routes.incidentDetail,
+                arguments: IdArgs(inc.id!),
+              );
+              if (changed == true && mounted) _reload();
+            },
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                IconBadge(
+                    icon: incidentTypeIcon(inc.type),
+                    color: incidentTypeColor(inc.type),
+                    size: 46),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Expanded(
+                          child: Text('${inc.type.label} · $name',
+                              style: context.text.titleSmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                        incidentStatusChip(inc.status),
+                      ]),
+                      Text(plate, style: context.text.bodySmall),
+                      const SizedBox(height: 6),
+                      Text(inc.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.text.bodyMedium),
+                      const SizedBox(height: 8),
+                      Wrap(spacing: 12, runSpacing: 4, children: [
+                        _meta(context, Icons.place_outlined, inc.place),
+                        _meta(context, Icons.event_rounded,
+                            formatShortDate(inc.date)),
+                        if (inc.photos.isNotEmpty)
+                          _meta(context, Icons.photo_library_outlined,
+                              '${inc.photos.length} photo(s)'),
+                      ]),
+                    ],
                   ),
-                );
-              },
+                ),
+              ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
+
+  Widget _meta(BuildContext context, IconData icon, String text) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: context.palette.muted),
+          const SizedBox(width: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 150),
+            child: Text(text,
+                style: context.text.labelSmall
+                    ?.copyWith(color: context.palette.muted),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      );
+}
+
+class _Data {
+  final List<IncidentView> items;
+  final Map<IncidentStatus, int> counts;
+  const _Data(this.items, this.counts);
 }

@@ -109,6 +109,16 @@ class IncidentRepository {
     }
   }
 
+  Future<Map<IncidentStatus, int>> countByStatus() async {
+    final db = await _db;
+    final rows = await db.rawQuery(
+        'SELECT statut, COUNT(*) AS cnt FROM incidents GROUP BY statut');
+    return {
+      for (final r in rows)
+        IncidentStatus.fromValue(r['statut'] as String): r['cnt'] as int
+    };
+  }
+
   Future<List<Incident>> getByVehicle(int vehicleId) async {
     final db = await _db;
     final rows = await db.query('incidents',

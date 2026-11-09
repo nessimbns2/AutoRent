@@ -6,6 +6,19 @@ import '../core/utils/app_exception.dart';
 import '../models/enums.dart';
 import '../models/vehicle.dart';
 
+class VehicleStats {
+  final int rentals;
+  final double revenue;
+  final int maintenances;
+  final int incidents;
+  const VehicleStats({
+    required this.rentals,
+    required this.revenue,
+    required this.maintenances,
+    required this.incidents,
+  });
+}
+
 class VehicleRepository {
   Future<Database> get _db => DatabaseHelper.instance.database;
 
@@ -162,6 +175,25 @@ class VehicleRepository {
 
     if (!vehicle.available) return VehicleAvailability.indisponible;
     return VehicleAvailability.disponible;
+  }
+
+  /// Usage figures shown on the vehicle detail screen.
+  Future<VehicleStats> getStats(int vehicleId) async {
+    final db = await _db;
+    final r = await db.rawQuery('''
+      SELECT
+        (SELECT COUNT(*) FROM rentals WHERE vehicle_id = ? AND statut != 'annulee') AS rentals,
+        (SELECT COALESCE(SUM(prix_total), 0) FROM rentals WHERE vehicle_id = ? AND statut != 'annulee') AS revenue,
+        (SELECT COUNT(*) FROM maintenances WHERE vehicle_id = ?) AS maintenances,
+        (SELECT COUNT(*) FROM incidents WHERE vehicle_id = ?) AS incidents
+    ''', [vehicleId, vehicleId, vehicleId, vehicleId]);
+    final row = r.first;
+    return VehicleStats(
+      rentals: row['rentals'] as int,
+      revenue: (row['revenue'] as num).toDouble(),
+      maintenances: row['maintenances'] as int,
+      incidents: row['incidents'] as int,
+    );
   }
 
   Future<void> _writePhotos(

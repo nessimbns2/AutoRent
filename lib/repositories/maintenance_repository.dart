@@ -64,6 +64,16 @@ class MaintenanceRepository {
     await db.delete('maintenances', where: 'id = ?', whereArgs: [id]);
   }
 
+  Future<Map<MaintenanceStatus, int>> countByStatus() async {
+    final db = await _db;
+    final rows = await db.rawQuery(
+        'SELECT statut, COUNT(*) AS cnt FROM maintenances GROUP BY statut');
+    return {
+      for (final r in rows)
+        MaintenanceStatus.fromValue(r['statut'] as String): r['cnt'] as int
+    };
+  }
+
   Future<bool> hasActiveMaintenance(int vehicleId) async {
     final db = await _db;
     final r = await db.rawQuery(

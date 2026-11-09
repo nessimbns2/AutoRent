@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/strings.dart';
+import '../../app/theme.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/utils/validators.dart';
@@ -65,7 +65,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-
     try {
       final emailText = _emailController.text.trim();
       final client = Client(
@@ -77,7 +76,6 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
         licenseNumber: _licenseController.text.trim(),
         createdAt: _existing?.createdAt ?? DateTime.now(),
       );
-
       if (_isEdit) {
         await _repo.update(client);
         if (!mounted) return;
@@ -103,77 +101,91 @@ class _ClientFormScreenState extends State<ClientFormScreen> {
       appBar: AppBar(
         title: Text(_isEdit ? 'Modifier le locataire' : 'Nouveau locataire'),
       ),
-      body: SafeArea(
-        child: ResponsiveCenter(
-          maxWidth: 750,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Form(
-              key: _formKey,
-            child: Column(
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          children: [
+            FormSection(
+              title: 'Identité',
+              icon: Icons.person_rounded,
               children: [
                 TextFormField(
-                  controller: _lastNameController,
-                  decoration: const InputDecoration(labelText: 'Nom'),
-                  validator: (v) => Validators.required(v, 'Le nom'),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
                   controller: _firstNameController,
-                  decoration: const InputDecoration(labelText: 'Prénom'),
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                      labelText: 'Prénom',
+                      prefixIcon: Icon(Icons.person_outline_rounded)),
                   validator: (v) => Validators.required(v, 'Le prénom'),
                   textInputAction: TextInputAction.next,
                 ),
-                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _lastNameController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                      labelText: 'Nom',
+                      prefixIcon: Icon(Icons.badge_outlined)),
+                  validator: (v) => Validators.required(v, 'Le nom'),
+                  textInputAction: TextInputAction.next,
+                ),
+              ],
+            ),
+            FormSection(
+              title: 'Contact',
+              icon: Icons.contact_phone_rounded,
+              color: AppColors.info,
+              children: [
                 TextFormField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Téléphone'),
+                  decoration: const InputDecoration(
+                      labelText: 'Téléphone',
+                      prefixIcon: Icon(Icons.phone_rounded),
+                      prefixText: '+216 '),
                   validator: Validators.phone,
                   textInputAction: TextInputAction.next,
                 ),
-                const SizedBox(height: 12),
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
-                    labelText: 'Email (facultatif)',
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return null;
-                    return Validators.email(v);
-                  },
+                      labelText: 'Email (facultatif)',
+                      prefixIcon: Icon(Icons.alternate_email_rounded)),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? null
+                      : Validators.email(v),
                   textInputAction: TextInputAction.next,
                 ),
-                const SizedBox(height: 12),
+              ],
+            ),
+            FormSection(
+              title: 'Permis de conduire',
+              icon: Icons.credit_card_rounded,
+              color: AppColors.violet,
+              children: [
                 TextFormField(
                   controller: _licenseController,
-                  decoration:
-                      const InputDecoration(labelText: 'Numéro de permis'),
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                      labelText: 'Numéro de permis',
+                      prefixIcon: Icon(Icons.numbers_rounded)),
                   validator: (v) =>
                       Validators.required(v, 'Le numéro de permis'),
                   textInputAction: TextInputAction.done,
                 ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _save,
-                    child: _saving
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text(Strings.save),
-                  ),
-                ),
               ],
             ),
-          ),
+          ],
         ),
       ),
-    ),
-  );
-}
+      bottomNavigationBar: BottomActionBar(
+        child: PrimaryButton(
+          label: _isEdit ? 'Enregistrer' : 'Ajouter le locataire',
+          icon: Icons.check_rounded,
+          loading: _saving,
+          onPressed: _save,
+        ),
+      ),
+    );
+  }
 }

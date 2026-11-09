@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../app/theme.dart';
 import '../../core/constants/strings.dart';
 import '../../core/session/session_manager.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/shared_widgets.dart';
+import '../../core/widgets/status_chips.dart';
 import '../../models/enums.dart';
 import '../../models/incident.dart';
 import '../../models/rental.dart';
@@ -90,20 +92,19 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
       return;
     }
     if (_selectedVehicleId != null) {
-      final r = await _rentalRepo.getActiveForVehicle(_selectedVehicleId!, _date);
+      final r =
+          await _rentalRepo.getActiveForVehicle(_selectedVehicleId!, _date);
       if (mounted) {
         setState(() {
           _activeRental = r;
           _linkedRentalId = r?.id;
         });
       }
-    } else {
-      if (mounted) {
-        setState(() {
-          _activeRental = null;
-          _linkedRentalId = null;
-        });
-      }
+    } else if (mounted) {
+      setState(() {
+        _activeRental = null;
+        _linkedRentalId = null;
+      });
     }
   }
 
@@ -121,6 +122,7 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
       initialDate: _date,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
+      helpText: "Date de l'incident",
     );
     if (picked != null) {
       setState(() {
@@ -138,14 +140,13 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
       return;
     }
     setState(() => _saving = true);
-
     try {
-      final currentUserId = SessionManager.instance.currentUser?.id;
       final incident = Incident(
         id: _existing?.id,
         vehicleId: _selectedVehicleId!,
         rentalId: _linkedRentalId,
-        reportedByUserId: _existing?.reportedByUserId ?? currentUserId,
+        reportedByUserId: _existing?.reportedByUserId ??
+            SessionManager.instance.currentUser?.id,
         type: _type,
         date: _date,
         place: _placeController.text.trim(),
@@ -154,7 +155,6 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
         photos: _photos,
         createdAt: _existing?.createdAt ?? DateTime.now(),
       );
-
       if (_isEdit) {
         await _incidentRepo.update(incident);
         if (!mounted) return;
@@ -173,49 +173,42 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: LoadingView());
-
     final lockVehicle = widget.vehicleId != null && !_isEdit;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEdit ? "Modifier l'incident" : 'Déclarer un incident'),
       ),
-      body: SafeArea(
-        child: ResponsiveCenter(
-          maxWidth: 750,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 1. Type
-                Center(
-                  child: SegmentedButton<IncidentType>(
-                    segments: const [
-                      ButtonSegment(
-                        value: IncidentType.panne,
-                        label: Text('Panne'),
-                        icon: Icon(Icons.build_outlined),
-                      ),
-                      ButtonSegment(
-                        value: IncidentType.accident,
-                        label: Text('Accident'),
-                        icon: Icon(Icons.car_crash_outlined),
-                      ),
-                    ],
-                    selected: {_type},
-                    onSelectionChanged: (set) =>
-                        setState(() => _type = set.first),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          children: [
+            // Type selector ---------------------------------------------------
+            Row(children: [
+              for (final t in IncidentType.values) ...[
+                if (t != IncidentType.values.first) const SizedBox(width: 12),
+                Expanded(
+                  child: _TypeCard(
+                    type: t,
+                    selected: _type == t,
+                    onTap: () => setState(() => _type = t),
                   ),
                 ),
-                const SizedBox(height: 16),
-
-                // 2. Véhicule
+              ],
+            ]),
+            const SizedBox(height: 14),
+            FormSection(
+              title: 'Véhicule',
+              icon: Icons.directions_car_rounded,
+              children: [
                 DropdownButtonFormField<int>(
                   initialValue: _selectedVehicleId,
-                  decoration: const InputDecoration(labelText: 'Véhicule'),
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Véhicule concerné',
+                    prefixIcon: Icon(Icons.directions_car_outlined),
+                  ),
                   items: [
                     for (final v in _vehicles)
                       DropdownMenuItem(
@@ -229,147 +222,155 @@ class _IncidentFormScreenState extends State<IncidentFormScreen> {
                           setState(() => _selectedVehicleId = id);
                           await _checkActiveRental();
                         },
-                  validator: (v) => v == null ? 'Choisissez un véhicule' : null,
+                  validator: (v) =>
+                      v == null ? 'Choisissez un véhicule' : null,
                 ),
-                const SizedBox(height: 12),
-
-                // 3. Location liée info banner
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _activeRental != null
-                        ? Theme.of(context)
-                            .colorScheme
-                            .primaryContainer
-                            .withValues(alpha: 0.3)
-                        : Colors.grey.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _activeRental != null
-                          ? Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.3)
-                          : Colors.grey.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.link,
-                        size: 20,
-                        color: _activeRental != null
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.grey,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _activeRental != null
-                              ? 'Rattaché à la location #${_activeRental!.id} (${formatDate(_activeRental!.startDate)} - ${formatDate(_activeRental!.endDate)})'
-                              : 'Aucune location active détectée sur cette date',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: _activeRental != null
-                                ? Theme.of(context).colorScheme.primary
-                                : Colors.grey[700],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                InfoBanner(
+                  icon: _activeRental != null
+                      ? Icons.link_rounded
+                      : Icons.link_off_rounded,
+                  color: _activeRental != null
+                      ? AppColors.info
+                      : context.palette.muted,
+                  text: _activeRental != null
+                      ? 'Rattaché à la location #${_activeRental!.id} '
+                          '(du ${formatDayMonth(_activeRental!.startDate)} au ${formatDayMonth(_activeRental!.endDate)})'
+                      : 'Aucune location en cours détectée à cette date.',
                 ),
-                const SizedBox(height: 12),
-
-                // 4. Date
+              ],
+            ),
+            FormSection(
+              title: 'Circonstances',
+              icon: Icons.description_rounded,
+              color: AppColors.info,
+              children: [
                 TextFormField(
                   controller: _dateController,
                   readOnly: true,
                   decoration: const InputDecoration(
                     labelText: "Date de l'incident",
-                    suffixIcon: Icon(Icons.calendar_today),
+                    prefixIcon: Icon(Icons.calendar_today_rounded),
                   ),
                   onTap: _pickDate,
                   validator: (v) => Validators.required(v, 'La date'),
                 ),
-                const SizedBox(height: 12),
-
-                // 5. Lieu
                 TextFormField(
                   controller: _placeController,
+                  textCapitalization: TextCapitalization.sentences,
                   decoration: const InputDecoration(
-                    labelText: 'Lieu (ville, route, repère)',
+                    labelText: 'Lieu',
+                    hintText: 'Ville, route, repère…',
+                    prefixIcon: Icon(Icons.place_outlined),
                   ),
                   validator: (v) => Validators.required(v, 'Le lieu'),
                   textInputAction: TextInputAction.next,
                 ),
-                const SizedBox(height: 12),
-
-                // 6. Description
                 TextFormField(
                   controller: _descriptionController,
                   maxLines: 4,
+                  textCapitalization: TextCapitalization.sentences,
                   decoration: const InputDecoration(
-                    labelText: 'Description des faits (minimum 10 caractères)',
+                    labelText: 'Description des faits',
+                    hintText: 'Décrivez ce qui s\'est passé (10 caractères min.)',
+                    alignLabelWithHint: true,
                   ),
-                  validator: (v) {
-                    if (v == null || v.trim().length < 10) {
-                      return 'Veuillez saisir une description détaillée (au moins 10 caractères)';
-                    }
-                    return null;
-                  },
+                  validator: (v) => (v == null || v.trim().length < 10)
+                      ? 'Veuillez saisir une description détaillée (au moins 10 caractères)'
+                      : null,
                 ),
-                const SizedBox(height: 16),
-
-                // 7. Photos
-                Text(
-                  'Photos de constat (maximum 5)',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
+              ],
+            ),
+            FormSection(
+              title: 'Photos de constat',
+              icon: Icons.photo_camera_rounded,
+              color: AppColors.violet,
+              children: [
                 PhotoPickerField(
                   fileNames: _photos,
                   maxPhotos: 5,
                   onChanged: (list) => setState(() => _photos = list),
                 ),
-                const SizedBox(height: 16),
-
-                // 8. Statut (edit only)
-                if (_isEdit) ...[
-                  DropdownButtonFormField<IncidentStatus>(
-                    initialValue: _status,
-                    decoration: const InputDecoration(labelText: 'Statut'),
-                    items: [
-                      for (final s in IncidentStatus.values)
-                        DropdownMenuItem(value: s, child: Text(s.label)),
-                    ],
-                    onChanged: (s) {
-                      if (s != null) setState(() => _status = s);
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _save,
-                    child: _saving
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text(Strings.save),
-                  ),
-                ),
               ],
             ),
-          ),
+            if (_isEdit)
+              FormSection(
+                title: 'Statut',
+                icon: Icons.flag_rounded,
+                color: AppColors.warning,
+                children: [
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final s in IncidentStatus.values)
+                      ChoiceChip(
+                        label: Text(s.label),
+                        selected: _status == s,
+                        showCheckmark: false,
+                        selectedColor:
+                            incidentStatusColor(s).withValues(alpha: 0.15),
+                        labelStyle: context.text.labelMedium?.copyWith(
+                            color:
+                                _status == s ? incidentStatusColor(s) : null),
+                        onSelected: (_) => setState(() => _status = s),
+                      ),
+                  ]),
+                ],
+              ),
+          ],
         ),
       ),
-    ),
-  );
+      bottomNavigationBar: BottomActionBar(
+        child: PrimaryButton(
+          label: _isEdit ? 'Enregistrer' : 'Envoyer la déclaration',
+          icon: Icons.send_rounded,
+          color: _isEdit ? null : incidentTypeColor(_type),
+          loading: _saving,
+          onPressed: _save,
+        ),
+      ),
+    );
+  }
 }
+
+class _TypeCard extends StatelessWidget {
+  final IncidentType type;
+  final bool selected;
+  final VoidCallback onTap;
+  const _TypeCard({
+    required this.type,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = incidentTypeColor(type);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: selected ? color : context.colors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(
+              color: selected ? color : context.palette.border, width: 1.4),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                      color: color.withValues(alpha: 0.35),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6))
+                ]
+              : null,
+        ),
+        child: Column(children: [
+          Icon(incidentTypeIcon(type),
+              size: 30, color: selected ? Colors.white : color),
+          const SizedBox(height: 6),
+          Text(type.label,
+              style: context.text.titleSmall
+                  ?.copyWith(color: selected ? Colors.white : null)),
+        ]),
+      ),
+    );
+  }
 }

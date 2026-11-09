@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../app/theme.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../repositories/user_repository.dart';
+import 'widgets/auth_layout.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -50,69 +52,70 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Mot de passe oublié')),
-      body: SafeArea(
-        child: ResponsiveCenter(
-          maxWidth: 480,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Saisissez votre email et votre nouveau mot de passe.',
-                    style: TextStyle(fontSize: 14),
-                  ),
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    controller: _emailCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                    validator: Validators.email,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _passCtrl,
-                    obscureText: _obscure,
-                    textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'Nouveau mot de passe',
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                            _obscure ? Icons.visibility : Icons.visibility_off),
-                        onPressed: () =>
-                            setState(() => _obscure = !_obscure),
-                      ),
-                    ),
-                    validator: Validators.password,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _confirmCtrl,
-                    obscureText: _obscure,
-                    textInputAction: TextInputAction.done,
-                    decoration:
-                        const InputDecoration(labelText: 'Confirmer le mot de passe'),
-                    validator: Validators.confirm(() => _passCtrl.text),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _saving ? null : _reset,
-                    child: _saving
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Réinitialiser'),
-                  ),
-                ],
-              ),
+    return AuthLayout(
+      showBack: true,
+      compactHeader: true,
+      title: 'Mot de passe oublié',
+      subtitle: 'Choisissez un nouveau mot de passe pour votre compte.',
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const InfoBanner(
+              icon: Icons.shield_outlined,
+              color: AppColors.info,
+              text:
+                  'Application hors-ligne : la réinitialisation se fait directement sur cet appareil.',
             ),
-          ),
+            const SizedBox(height: 18),
+            TextFormField(
+              controller: _emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Email du compte',
+                prefixIcon: Icon(Icons.alternate_email_rounded),
+              ),
+              validator: Validators.email,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _passCtrl,
+              obscureText: _obscure,
+              textInputAction: TextInputAction.next,
+              decoration: InputDecoration(
+                labelText: 'Nouveau mot de passe',
+                prefixIcon: const Icon(Icons.key_rounded),
+                suffixIcon: IconButton(
+                  icon: Icon(_obscure
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+              validator: Validators.password,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _confirmCtrl,
+              obscureText: _obscure,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _reset(),
+              decoration: const InputDecoration(
+                labelText: 'Confirmer le mot de passe',
+                prefixIcon: Icon(Icons.lock_reset_rounded),
+              ),
+              validator: Validators.confirm(() => _passCtrl.text),
+            ),
+            const SizedBox(height: 24),
+            PrimaryButton(
+              label: 'Réinitialiser',
+              icon: Icons.lock_reset_rounded,
+              loading: _saving,
+              onPressed: _reset,
+            ),
+          ],
         ),
       ),
     );

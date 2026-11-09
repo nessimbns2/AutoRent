@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/route_args.dart';
 import '../../app/routes.dart';
+import '../../app/theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/widgets/shared_widgets.dart';
@@ -24,23 +25,18 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
   final _incidentRepo = IncidentRepository();
   final _vehicleRepo = VehicleRepository();
 
-  late Future<_IncidentDetailData> _future = _load();
+  late Future<_Data> _future = _load();
   bool _didChange = false;
 
-  Future<_IncidentDetailData> _load() async {
-    final inc = await _incidentRepo.getById(widget.incidentId);
-    Vehicle? v;
-    if (inc != null) {
-      v = await _vehicleRepo.getById(inc.vehicleId);
-    }
-    return _IncidentDetailData(incident: inc, vehicle: v);
+  Future<_Data> _load() async {
+    final view = await _incidentRepo.getViewById(widget.incidentId);
+    final v = view == null
+        ? null
+        : await _vehicleRepo.getById(view.incident.vehicleId);
+    return _Data(view, v);
   }
 
-  void _reload() {
-    setState(() {
-      _future = _load();
-    });
-  }
+  void _reload() => setState(() { _future = _load(); });
 
   Future<void> _edit(Incident inc) async {
     final saved = await Navigator.pushNamed(
@@ -61,237 +57,273 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
   Future<void> _delete(Incident inc) async {
     final ok = await confirmDialog(
       context,
-      title: 'Supprimer incident',
-      message: 'Voulez-vous vraiment supprimer définitivement cet incident ?',
+      title: 'Supprimer cet incident ?',
+      message: 'La déclaration et ses photos seront définitivement supprimées.',
       confirmLabel: 'Supprimer',
     );
     if (ok != true || !mounted) return;
-
     await _incidentRepo.delete(inc.id!);
     if (!mounted) return;
     showSnack(context, 'Incident supprimé');
     Navigator.pop(context, true);
   }
 
-  Future<void> _changeStatus(Incident inc, IncidentStatus newStatus) async {
+  Future<void> _changeStatus(Incident inc, IncidentStatus to) async {
     final ok = await confirmDialog(
       context,
-      title: 'Changer le statut',
-      message: 'Passer cet incident à "${newStatus.label}" ?',
+      title: to == IncidentStatus.enCours
+          ? 'Prendre en charge ?'
+          : 'Marquer comme résolu ?',
+      message: 'Le statut passera à « ${to.label} ».',
+      icon: to == IncidentStatus.enCours
+          ? Icons.engineering_rounded
+          : Icons.verified_rounded,
     );
     if (ok != true || !mounted) return;
-
-    await _incidentRepo.changeStatus(inc.id!, newStatus);
+    await _incidentRepo.changeStatus(inc.id!, to);
     if (!mounted) return;
     showSnack(context, 'Statut mis à jour');
     _didChange = true;
     _reload();
   }
 
-  void _openPhotoViewer(List<String> photos, int index) {
-    Navigator.pushNamed(
-      context,
-      Routes.photoViewer,
-      arguments: PhotoViewerArgs(fileNames: photos, initialIndex: index),
-    );
-  }
+  void _openPhotos(List<String> photos, int index) => Navigator.pushNamed(
+        context,
+        Routes.photoViewer,
+        arguments: PhotoViewerArgs(fileNames: photos, initialIndex: index),
+      );
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: true,
-      onPopInvokedWithResult: (didPop, _) {},
-      child: FutureBuilder<_IncidentDetailData>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Navigator.pop(context, _didChange);
+      },
+      child: FutureBuilder<_Data>(
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Scaffold(body: LoadingView());
           }
-          if (snap.hasError || snap.data?.incident == null) {
+          if (snap.hasError || snap.data?.view == null) {
             return Scaffold(
-              appBar: AppBar(title: const Text("Détail de l'incident")),
+              appBar: AppBar(title: const Text('Incident')),
               body: ErrorView(
-                error: snap.error ?? 'Incident introuvable',
-                onRetry: _reload,
-              ),
+                  error: snap.error ?? 'Incident introuvable',
+                  onRetry: _reload),
             );
           }
-          final data = snap.data!;
-          final inc = data.incident!;
-          final vehicle = data.vehicle;
-          final isAccident = inc.type == IncidentType.accident;
+          final view = snap.data!.view!;
+          final inc = view.incident;
+          final vehicle = snap.data!.vehicle;
+          final typeColor = incidentTypeColor(inc.type);
 
           return Scaffold(
             appBar: AppBar(
-              title: Text('${inc.type.label} #${inc.id}'),
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
+                icon: const Icon(Icons.arrow_back_rounded),
                 onPressed: () => Navigator.pop(context, _didChange),
               ),
+              title: Text('${inc.type.label} #${inc.id}'),
               actions: [
-                IconButton(
-                  icon: const Icon(Icons.edit),
-                  onPressed: () => _edit(inc),
-                  tooltip: 'Modifier',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => _delete(inc),
-                  tooltip: 'Supprimer',
-                ),
+                DetailMenu(items: [
+                  DetailMenuItem(
+                      'Modifier', Icons.edit_rounded, () => _edit(inc)),
+                  DetailMenuItem('Supprimer', Icons.delete_outline_rounded,
+                      () => _delete(inc),
+                      destructive: true),
+                ]),
+                const SizedBox(width: 8),
               ],
             ),
-            body: ResponsiveCenter(
-              maxWidth: 850,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SectionCard(
-                    title: 'Fiche incident',
-                    children: [
-                      Row(
+            body: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        typeColor.withValues(alpha: 0.95),
+                        typeColor.withValues(alpha: 0.75),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(AppRadius.lg + 4),
+                  ),
+                  child: Row(children: [
+                    IconBadge(
+                        icon: incidentTypeIcon(inc.type),
+                        color: Colors.white,
+                        size: 56),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            isAccident
-                                ? Icons.car_crash_outlined
-                                : Icons.build_outlined,
-                            color: isAccident ? Colors.red : Colors.orange,
-                            size: 28,
-                          ),
-                          const SizedBox(width: 8),
+                          Text(inc.type.label,
+                              style: context.text.titleLarge
+                                  ?.copyWith(color: Colors.white)),
                           Text(
-                            inc.type.label,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.bold,
+                              '${formatShortDate(inc.date)} · ${inc.place}',
+                              style: context.text.bodySmall?.copyWith(
                                   color:
-                                      isAccident ? Colors.red : Colors.orange,
-                                ),
-                          ),
-                          const Spacer(),
-                          incidentStatusChip(inc.status),
+                                      Colors.white.withValues(alpha: 0.85))),
                         ],
                       ),
-                      const Divider(height: 24),
-                      if (vehicle != null)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: CarImage(
-                              fileName: vehicle.photos.isNotEmpty
-                                  ? vehicle.photos.first
-                                  : null,
-                              width: 50,
-                              height: 50,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          title: Text(
-                            vehicle.label,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: const Text('Véhicule concerné'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => Navigator.pushNamed(
-                            context,
-                            Routes.vehicleDetail,
-                            arguments: IdArgs(vehicle.id!),
-                          ),
+                    ),
+                    StatusChip(
+                      label: inc.status.label,
+                      color: Colors.white,
+                    ),
+                  ]),
+                ),
+                if (vehicle != null)
+                  AppCard(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    onTap: () => Navigator.pushNamed(
+                        context, Routes.vehicleDetail,
+                        arguments: IdArgs(vehicle.id!)),
+                    child: Row(children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                        child: CarImage(
+                          fileName: vehicle.photos.isNotEmpty
+                              ? vehicle.photos.first
+                              : null,
+                          seed: vehicle.id ?? 0,
+                          width: 64,
+                          height: 48,
                         ),
-                      if (inc.rentalId != null) ...[
-                        const Divider(),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const CircleAvatar(
-                              child: Icon(Icons.assignment_outlined)),
-                          title: Text('Contrat de location #${inc.rentalId}'),
-                          subtitle: const Text('Location liée'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => Navigator.pushNamed(
-                            context,
-                            Routes.rentalDetail,
-                            arguments: IdArgs(inc.rentalId!),
-                          ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Véhicule concerné',
+                                style: context.text.bodySmall),
+                            Text(
+                                '${vehicle.brand} ${vehicle.model} · ${vehicle.plate}',
+                                style: context.text.titleSmall,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                          ],
                         ),
-                      ],
-                      const Divider(),
-                      LabeledRow(label: 'Date', value: formatDate(inc.date)),
-                      LabeledRow(label: 'Lieu', value: inc.place),
-                      LabeledRow(
+                      ),
+                      Icon(Icons.chevron_right_rounded,
+                          color: context.palette.muted),
+                    ]),
+                  ),
+                if (inc.rentalId != null)
+                  AppCard(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    onTap: () => Navigator.pushNamed(
+                        context, Routes.rentalDetail,
+                        arguments: IdArgs(inc.rentalId!)),
+                    child: Row(children: [
+                      const IconBadge(
+                          icon: Icons.receipt_long_rounded,
+                          color: AppColors.info,
+                          size: 48),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Location liée',
+                                style: context.text.bodySmall),
+                            Text('Contrat #${inc.rentalId}',
+                                style: context.text.titleSmall),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded,
+                          color: context.palette.muted),
+                    ]),
+                  ),
+                SectionCard(
+                  title: 'Déclaration',
+                  icon: Icons.description_rounded,
+                  iconColor: typeColor,
+                  children: [
+                    LabeledRow(
+                        icon: Icons.place_outlined,
+                        label: 'Lieu',
+                        value: inc.place),
+                    LabeledRow(
+                        icon: Icons.event_rounded,
+                        label: 'Date',
+                        value: formatDate(inc.date)),
+                    LabeledRow(
+                        icon: Icons.person_outline_rounded,
+                        label: 'Déclaré par',
+                        value: view.reporterName ?? '—'),
+                    LabeledRow(
+                        icon: Icons.history_toggle_off_rounded,
                         label: 'Enregistré le',
-                        value: formatDate(inc.createdAt),
+                        value: formatDate(inc.createdAt)),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: context.palette.surfaceAlt,
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Description :',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(inc.description),
+                      child:
+                          Text(inc.description, style: context.text.bodyMedium),
+                    ),
+                  ],
+                ),
+                if (inc.photos.isNotEmpty)
+                  SectionCard(
+                    title: 'Photos de constat (${inc.photos.length})',
+                    icon: Icons.photo_library_rounded,
+                    iconColor: AppColors.violet,
+                    children: [
+                      PhotoStrip(
+                        fileNames: inc.photos,
+                        size: 90,
+                        onTap: (i) => _openPhotos(inc.photos, i),
                       ),
                     ],
                   ),
-                  if (inc.photos.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Photos (${inc.photos.length})',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    PhotoStrip(
-                      fileNames: inc.photos,
-                      onTap: (i) => _openPhotoViewer(inc.photos, i),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  if (inc.status == IncidentStatus.enAttente)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.play_arrow),
-                        label: const Text('Prendre en charge'),
-                        onPressed: () =>
-                            _changeStatus(inc, IncidentStatus.enCours),
-                      ),
-                    ),
-                  if (inc.status == IncidentStatus.enCours)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.check_circle_outline),
-                        label: const Text('Marquer comme résolu'),
-                        onPressed: () =>
-                            _changeStatus(inc, IncidentStatus.resolu),
-                      ),
-                    ),
-                ],
-              ),
+              ],
             ),
-          ),
-        );
-      },
+            bottomNavigationBar: switch (inc.status) {
+              IncidentStatus.enAttente => BottomActionBar(
+                  child: PrimaryButton(
+                    label: 'Prendre en charge',
+                    icon: Icons.engineering_rounded,
+                    onPressed: () =>
+                        _changeStatus(inc, IncidentStatus.enCours),
+                  ),
+                ),
+              IncidentStatus.enCours => BottomActionBar(
+                  child: PrimaryButton(
+                    label: 'Marquer comme résolu',
+                    icon: Icons.verified_rounded,
+                    color: AppColors.success,
+                    onPressed: () => _changeStatus(inc, IncidentStatus.resolu),
+                  ),
+                ),
+              IncidentStatus.resolu => null,
+            },
+          );
+        },
       ),
     );
   }
 }
 
-class _IncidentDetailData {
-  final Incident? incident;
+class _Data {
+  final IncidentView? view;
   final Vehicle? vehicle;
-  _IncidentDetailData({required this.incident, required this.vehicle});
+  const _Data(this.view, this.vehicle);
 }

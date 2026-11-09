@@ -41,6 +41,22 @@ class DatabaseHelper {
     _db = null;
   }
 
+  /// Full path of the SQLite file on this device.
+  Future<String> get filePath async => join(await getDatabasesPath(), _dbName);
+
+  /// Number of rows per business table (shown in the Profil tab).
+  Future<Map<String, int>> tableCounts() async {
+    final db = await database;
+    const tables = [
+      'users', 'clients', 'vehicles', 'vehicle_photos',
+      'maintenances', 'rentals', 'incidents', 'incident_photos',
+    ];
+    return {
+      for (final t in tables)
+        t: Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $t')) ?? 0
+    };
+  }
+
   // ── Schema ──────────────────────────────────────────────────────────────────
 
   static const _schemaStatements = <String>[

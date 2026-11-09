@@ -140,19 +140,19 @@ flowchart TD
     Login --> Register["/register"]
     Login --> Forgot["/forgot-password"]
 
-    subgraph Shell["HomeShell : AppBar + AppDrawer + BottomNavigationBar"]
-        T0["Onglet 0 : Accueil (Dashboard)"]
-        T1["Onglet 1 : Véhicules (Tous · Disponibles · Indisponibles)"]
-        T2["Onglet 2 : Locations (Réservées · En cours · Terminées · Annulées)"]
-        T3["Onglet 3 : Entretiens (Planifiés · En cours · Terminés)"]
-        T4["Onglet 4 : Incidents (En attente · En cours · Résolus)"]
+    subgraph Shell["HomeShell : barre de navigation flottante (5 onglets)"]
+        T0["Onglet 0 : Accueil (tableau de bord)"]
+        T1["Onglet 1 : Flotte (Tous · Disponibles · Louées · Entretien · Indisponibles)"]
+        T2["Onglet 2 : Locations (En cours · Réservées · Terminées · Annulées)"]
+        T3["Onglet 3 : Suivi (Entretiens | Incidents)"]
+        T4["Onglet 4 : Profil"]
     end
     Home --- Shell
 
-    AppDrawer["AppDrawer"] --> Profile["/profile"]
-    AppDrawer --> Clients["/clients"]
-    AppDrawer --> Users["/users"]
-    AppDrawer -->|Déconnexion| Login
+    T4 --> Profile["/profile (modifier mon profil)"]
+    T4 --> Clients["/clients"]
+    T4 --> Users["/users"]
+    T4 -->|Déconnexion| Login
 
     T1 --> VD["/vehicles/detail"] --> VF["/vehicles/form"]
     VD -->|Louer ce véhicule| RF["/rentals/form"]
@@ -163,7 +163,7 @@ flowchart TD
     RD -->|Déclarer un incident| IF["/incidents/form"]
 
     T3 --> MD["/maintenances/detail"] --> MF
-    T4 --> ID["/incidents/detail"] --> IF
+    T3 --> ID["/incidents/detail"] --> IF
 
     Users --> UD["/users/detail"] --> UF["/users/form"]
     Clients --> CD["/clients/detail"] --> CF["/clients/form"]

@@ -12,8 +12,8 @@ class RentalRepository {
     RentalStatus status, {
     int? userId,
     String? userEmail,
-  }) async {
-    final db = await _db;
+    String? search,
+  }) {
     final where = <String>['r.statut = ?'];
     final args = <Object?>[status.value];
 
@@ -30,19 +30,41 @@ class RentalRepository {
       where.add('(${userConditions.join(' OR ')})');
     }
 
-    final sql = '''
-      SELECT r.*,
-             c.nom || ' ' || c.prenom AS client_name,
-             v.marque || ' ' || v.modele || ' · ' || v.immatriculation AS vehicle_label,
-             u.nom || ' ' || u.prenom AS user_name
-      FROM rentals r
-      JOIN clients c ON c.id = r.client_id
-      JOIN vehicles v ON v.id = r.vehicle_id
-      LEFT JOIN users u ON u.id = r.user_id
-      WHERE ${where.join(' AND ')}
-      ORDER BY r.date_debut DESC
-    ''';
-    final rows = await db.rawQuery(sql, args);
+    if (search != null && search.trim().isNotEmpty) {
+      final like = '%${search.trim().toLowerCase()}%';
+      where.add('(LOWER(c.nom) LIKE ? OR LOWER(c.prenom) LIKE ? '
+          'OR LOWER(v.marque) LIKE ? OR LOWER(v.modele) LIKE ? '
+          'OR LOWER(v.immatriculation) LIKE ?)');
+      args.addAll([like, like, like, like, like]);
+    }
+
+    return queryViews(where.join(' AND '), args);
+  }
+
+  static const _viewSelect = '''
+    SELECT r.*,
+           c.prenom || ' ' || c.nom AS client_name,
+           v.marque || ' ' || v.modele || ' · ' || v.immatriculation AS vehicle_label,
+           u.prenom || ' ' || u.nom AS user_name
+    FROM rentals r
+    JOIN clients c ON c.id = r.client_id
+    JOIN vehicles v ON v.id = r.vehicle_id
+    LEFT JOIN users u ON u.id = r.user_id
+  ''';
+
+  /// Generic joined query used by the dashboard and detail screens.
+  Future<List<RentalView>> queryViews(
+    String where,
+    List<Object?> args, {
+    String orderBy = 'r.date_debut DESC',
+    int? limit,
+  }) async {
+    final db = await _db;
+    final rows = await db.rawQuery(
+      '$_viewSelect WHERE $where ORDER BY $orderBy'
+      '${limit != null ? ' LIMIT $limit' : ''}',
+      args,
+    );
     return [
       for (final r in rows)
         RentalView(
@@ -54,27 +76,12 @@ class RentalRepository {
     ];
   }
 
+  Future<List<RentalView>> getViewsByVehicle(int vehicleId) =>
+      queryViews('r.vehicle_id = ?', [vehicleId]);
+
   Future<RentalView?> getViewById(int id) async {
-    final db = await _db;
-    final rows = await db.rawQuery('''
-      SELECT r.*,
-             c.nom || ' ' || c.prenom AS client_name,
-             v.marque || ' ' || v.modele || ' · ' || v.immatriculation AS vehicle_label,
-             u.nom || ' ' || u.prenom AS user_name
-      FROM rentals r
-      JOIN clients c ON c.id = r.client_id
-      JOIN vehicles v ON v.id = r.vehicle_id
-      LEFT JOIN users u ON u.id = r.user_id
-      WHERE r.id = ?
-    ''', [id]);
-    if (rows.isEmpty) return null;
-    final r = rows.first;
-    return RentalView(
-      rental: Rental.fromMap(r),
-      clientName: r['client_name'] as String,
-      vehicleLabel: r['vehicle_label'] as String,
-      userName: r['user_name'] as String?,
-    );
+    final list = await queryViews('r.id = ?', [id]);
+    return list.isEmpty ? null : list.first;
   }
 
   Future<Rental?> getById(int id) async {

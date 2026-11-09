@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../app/theme.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/utils/ui_helpers.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../models/user.dart';
 import '../../repositories/user_repository.dart';
+import 'widgets/auth_layout.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -39,26 +41,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      final user = User(
-        lastName: _lastNameCtrl.text.trim(),
-        firstName: _firstNameCtrl.text.trim(),
-        email: _emailCtrl.text.trim(),
-        passwordHash: '',
-        createdAt: DateTime.now(),
-      );
-      await _repo.insert(user, _passCtrl.text);
-      if (!mounted) return;
-      await showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Compte créé'),
-          content: const Text('Votre compte a été créé avec succès.'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'))
-          ],
+      await _repo.insert(
+        User(
+          lastName: _lastNameCtrl.text.trim(),
+          firstName: _firstNameCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+          passwordHash: '',
+          createdAt: DateTime.now(),
         ),
+        _passCtrl.text,
       );
       if (!mounted) return;
       Navigator.pop(context, _emailCtrl.text.trim());
@@ -71,80 +62,94 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Créer un compte')),
-      body: SafeArea(
-        child: ResponsiveCenter(
-          maxWidth: 520,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  TextFormField(
-                    controller: _lastNameCtrl,
-                    textInputAction: TextInputAction.next,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(labelText: 'Nom'),
-                    validator: (v) => Validators.required(v, 'Le nom'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _firstNameCtrl,
-                    textInputAction: TextInputAction.next,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(labelText: 'Prénom'),
-                    validator: (v) => Validators.required(v, 'Le prénom'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _emailCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                    validator: Validators.email,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _passCtrl,
-                    obscureText: _obscure,
-                    textInputAction: TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'Mot de passe',
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                            _obscure ? Icons.visibility : Icons.visibility_off),
-                        onPressed: () =>
-                            setState(() => _obscure = !_obscure),
-                      ),
-                    ),
-                    validator: Validators.password,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _confirmCtrl,
-                    obscureText: _obscure,
-                    textInputAction: TextInputAction.done,
-                    decoration:
-                        const InputDecoration(labelText: 'Confirmer le mot de passe'),
-                    validator: Validators.confirm(() => _passCtrl.text),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _saving ? null : _register,
-                    child: _saving
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Créer le compte'),
-                  ),
-                ],
+    return AuthLayout(
+      showBack: true,
+      compactHeader: true,
+      title: 'Créer un compte',
+      subtitle: 'Rejoignez votre agence en quelques secondes.',
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _firstNameCtrl,
+                  textInputAction: TextInputAction.next,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(labelText: 'Prénom'),
+                  validator: (v) => Validators.required(v, 'Le prénom'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextFormField(
+                  controller: _lastNameCtrl,
+                  textInputAction: TextInputAction.next,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(labelText: 'Nom'),
+                  validator: (v) => Validators.required(v, 'Le nom'),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                prefixIcon: Icon(Icons.alternate_email_rounded),
+              ),
+              validator: Validators.email,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _passCtrl,
+              obscureText: _obscure,
+              textInputAction: TextInputAction.next,
+              decoration: InputDecoration(
+                labelText: 'Mot de passe',
+                helperText: '6 caractères minimum',
+                prefixIcon: const Icon(Icons.lock_outline_rounded),
+                suffixIcon: IconButton(
+                  icon: Icon(_obscure
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+              validator: Validators.password,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _confirmCtrl,
+              obscureText: _obscure,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _register(),
+              decoration: const InputDecoration(
+                labelText: 'Confirmer le mot de passe',
+                prefixIcon: Icon(Icons.lock_reset_rounded),
+              ),
+              validator: Validators.confirm(() => _passCtrl.text),
+            ),
+            const SizedBox(height: 24),
+            PrimaryButton(
+              label: 'Créer mon compte',
+              icon: Icons.person_add_alt_1_rounded,
+              loading: _saving,
+              onPressed: _register,
+            ),
+            const SizedBox(height: 12),
+            Center(
+              child: Text(
+                'Vos données restent enregistrées sur cet appareil\n(base SQLite, aucune connexion requise).',
+                textAlign: TextAlign.center,
+                style: context.text.bodySmall,
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
