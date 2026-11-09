@@ -8,6 +8,8 @@ import '../../core/widgets/shared_widgets.dart';
 import '../../models/enums.dart';
 import '../../models/rental.dart';
 import '../../repositories/rental_repository.dart';
+import '../incidents/incident_permissions.dart';
+import 'rental_stats_screen.dart';
 import 'widgets/rental_tile.dart';
 
 class RentalsTab extends StatefulWidget {
@@ -81,6 +83,16 @@ class _RentalsTabState extends State<RentalsTab> {
                     ? 'Mes contrats et réservations'
                     : "Tous les contrats de l'agence",
                 actions: [
+                  if (IncidentPermissions.isAdmin)
+                    IconButton.filledTonal(
+                      tooltip: 'Analyse des locations',
+                      icon: const Icon(Icons.insights_rounded),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const RentalStatsScreen()),
+                      ),
+                    ),
                   _ScopeToggle(
                     onlyMine: _onlyMine,
                     onChanged: (v) {

@@ -7,6 +7,8 @@ import '../core/utils/app_exception.dart';
 import '../core/utils/formatters.dart';
 import '../models/enums.dart';
 import '../models/rental.dart';
+import '../models/rental_stats.dart';
+import 'dashboard_repository.dart' show MonthRevenue;
 
 class RentalRepository {
   Future<Database> get _db => DatabaseHelper.instance.database;
@@ -245,6 +247,88 @@ class RentalRepository {
       } catch (_) {}
     }
     return result;
+  }
+
+  /// Figures for the admin analytics page. [now] is injectable for tests.
+  Future<RentalStats> getStats({DateTime? now}) async {
+    final db = await _db;
+    final today = DateUtils.dateOnly(now ?? DateTime.now());
+    final todayIso = toIsoDate(today);
+
+    final byStatus = <RentalStatus, int>{};
+    for (final r in await db
+        .rawQuery('SELECT statut, COUNT(*) AS n FROM rentals GROUP BY statut')) {
+      byStatus[RentalStatus.fromValue(r['statut'] as String)] = r['n'] as int;
+    }
+
+    // One row of totals over every non-cancelled contract.
+    final t = (await db.rawQuery('''
+      SELECT COALESCE(SUM(prix_total), 0) AS revenue,
+             COALESCE(AVG(prix_total), 0) AS avg_amount,
+             COALESCE(AVG(MAX(1, julianday(date_fin) - julianday(date_debut))), 0) AS avg_days
+      FROM rentals WHERE statut != 'annulee'
+    ''')).first;
+
+    final overdue = Sqflite.firstIntValue(await db.rawQuery(
+            "SELECT COUNT(*) FROM rentals WHERE statut = 'en_cours' AND date_fin < ?",
+            [todayIso])) ??
+        0;
+
+    // Revenue per month (by start date) for the last 6 months, zero-filled.
+    final start = DateTime(today.year, today.month - 5, 1);
+    final byMonth = {
+      for (final r in await db.rawQuery('''
+        SELECT substr(date_debut, 1, 7) AS ym, SUM(prix_total) AS total
+        FROM rentals WHERE statut != 'annulee' AND date_debut >= ?
+        GROUP BY ym
+      ''', [toIsoDate(start)]))
+        r['ym'] as String: (r['total'] as num).toDouble()
+    };
+    final monthly = <MonthRevenue>[
+      for (var i = 0; i < 6; i++)
+        () {
+          final d = DateTime(start.year, start.month + i, 1);
+          final key = '${d.year}-${d.month.toString().padLeft(2, '0')}';
+          return MonthRevenue(d.year, d.month, byMonth[key] ?? 0);
+        }(),
+    ];
+
+    Future<List<RankedItem>> ranking(String label, String join, String group) async {
+      final rows = await db.rawQuery('''
+        SELECT $label AS label, COUNT(*) AS n, COALESCE(SUM(r.prix_total), 0) AS revenue
+        FROM rentals r $join
+        WHERE r.statut != 'annulee'
+        GROUP BY $group
+        ORDER BY revenue DESC, n DESC
+        LIMIT 5
+      ''');
+      return [
+        for (final r in rows)
+          RankedItem(r['label'] as String, r['n'] as int,
+              (r['revenue'] as num).toDouble())
+      ];
+    }
+
+    return RentalStats(
+      total: byStatus.values.fold(0, (a, b) => a + b),
+      byStatus: byStatus,
+      revenue: (t['revenue'] as num).toDouble(),
+      revenueThisMonth: monthly.last.amount,
+      averageAmount: (t['avg_amount'] as num).toDouble(),
+      averageDays: (t['avg_days'] as num).toDouble(),
+      overdue: overdue,
+      monthly: monthly,
+      topVehicles: await ranking(
+          "v.marque || ' ' || v.modele || ' · ' || v.immatriculation",
+          'JOIN vehicles v ON v.id = r.vehicle_id',
+          'r.vehicle_id'),
+      topClients: await ranking("c.prenom || ' ' || c.nom",
+          'JOIN clients c ON c.id = r.client_id', 'r.client_id'),
+      byAgent: await ranking(
+          "COALESCE(u.prenom || ' ' || u.nom, 'Système')",
+          'LEFT JOIN users u ON u.id = r.user_id',
+          'r.user_id'),
+    );
   }
 
   Future<List<Rental>> getByClient(int clientId) async {
