@@ -67,8 +67,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           : () => setState(() => _photoFile = null),
     );
     if (source == null || !mounted) return;
-    final file = await ImageStorage.pickAndSave(source);
-    if (file != null && mounted) setState(() => _photoFile = file);
+    try {
+      final file = await ImageStorage.pickAndSave(source);
+      if (file != null && mounted) setState(() => _photoFile = file);
+    } on AppException catch (e) {
+      if (mounted) showSnack(context, e.message, kind: SnackKind.error);
+    }
   }
 
   Future<void> _save() async {

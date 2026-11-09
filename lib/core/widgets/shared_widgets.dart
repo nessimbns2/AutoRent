@@ -3,6 +3,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../app/theme.dart';
 import '../services/image_storage.dart';
+import '../utils/app_exception.dart';
+import '../utils/ui_helpers.dart';
 
 // ═════════════════════════════════════════════════════════════════════════════
 // AutoRent UI kit — reusable building blocks shared by every screen.
@@ -1000,9 +1002,16 @@ class _PhotoPickerFieldState extends State<PhotoPickerField> {
   Future<void> _addPhoto() async {
     final source = await pickImageSource(context);
     if (source == null || !mounted) return;
-    final name = await ImageStorage.pickAndSave(source);
+    String? name;
+    try {
+      name = await ImageStorage.pickAndSave(source);
+    } on AppException catch (e) {
+      if (mounted) showSnack(context, e.message, kind: SnackKind.error);
+      return;
+    }
     if (name == null || !mounted) return;
-    setState(() => _files.add(name));
+    final saved = name;
+    setState(() => _files.add(saved));
     widget.onChanged(_files);
   }
 
@@ -1083,10 +1092,15 @@ class _PhotoPickerFieldState extends State<PhotoPickerField> {
   }
 }
 
-/// Bottom sheet asking "camera or gallery?".
+/// Asks where the photo comes from. The camera is only offered where the
+/// platform supports it (not on Windows / Linux desktop); when the gallery is
+/// the only choice and there is nothing to remove, it is opened directly.
 Future<ImageSource?> pickImageSource(BuildContext context,
-        {VoidCallback? onRemove}) =>
-    showModalBottomSheet<ImageSource>(
+    {VoidCallback? onRemove}) async {
+  final hasCamera = ImagePicker().supportsImageSource(ImageSource.camera);
+  if (!hasCamera && onRemove == null) return ImageSource.gallery;
+
+  return showModalBottomSheet<ImageSource>(
       context: context,
       builder: (sheetCtx) => SafeArea(
         child: Padding(
@@ -1094,18 +1108,21 @@ Future<ImageSource?> pickImageSource(BuildContext context,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text('Ajouter une photo', style: sheetCtx.text.titleMedium),
             const SizedBox(height: 14),
-            ListTile(
-              leading: const IconBadge(
-                  icon: Icons.photo_camera_rounded, color: AppColors.brand),
-              title: const Text('Appareil photo'),
-              subtitle: const Text('Prendre une nouvelle photo'),
-              onTap: () => Navigator.pop(sheetCtx, ImageSource.camera),
-            ),
+            if (hasCamera)
+              ListTile(
+                leading: const IconBadge(
+                    icon: Icons.photo_camera_rounded, color: AppColors.brand),
+                title: const Text('Appareil photo'),
+                subtitle: const Text('Prendre une nouvelle photo'),
+                onTap: () => Navigator.pop(sheetCtx, ImageSource.camera),
+              ),
             ListTile(
               leading: const IconBadge(
                   icon: Icons.photo_library_rounded, color: AppColors.info),
-              title: const Text('Galerie'),
-              subtitle: const Text('Choisir une image existante'),
+              title: Text(hasCamera ? 'Galerie' : 'Choisir un fichier'),
+              subtitle: Text(hasCamera
+                  ? 'Choisir une image existante'
+                  : 'Parcourir les images de l\'ordinateur'),
               onTap: () => Navigator.pop(sheetCtx, ImageSource.gallery),
             ),
             if (onRemove != null)
@@ -1124,6 +1141,7 @@ Future<ImageSource?> pickImageSource(BuildContext context,
         ),
       ),
     );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FormSection — groups form fields inside a titled card

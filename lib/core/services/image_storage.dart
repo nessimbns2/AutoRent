@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../utils/app_exception.dart';
+
 class ImageStorage {
   ImageStorage._();
 
@@ -26,15 +28,32 @@ class ImageStorage {
   static File fileFor(String fileName) => File(join(_dir.path, fileName));
 
   /// Picks an image from [source], copies it into the photos directory,
-  /// and returns only the file name (never an absolute path).
+  /// and returns only the file name (never an absolute path), or null if the
+  /// user cancelled. Throws an [AppException] with a French message when the
+  /// camera / gallery is unavailable or the file cannot be copied.
   static Future<String?> pickAndSave(ImageSource source) async {
-    final picked = await ImagePicker()
-        .pickImage(source: source, maxWidth: 1600, imageQuality: 80);
-    if (picked == null) return null;
-    final ext = extension(picked.path).isEmpty ? '.jpg' : extension(picked.path);
-    final name = '${DateTime.now().microsecondsSinceEpoch}$ext';
-    await File(picked.path).copy(join(_dir.path, name));
-    return name;
+    if (!ImagePicker().supportsImageSource(source)) {
+      throw AppException(source == ImageSource.camera
+          ? "L'appareil photo n'est pas disponible sur cet appareil."
+          : "La galerie n'est pas disponible sur cet appareil.");
+    }
+    try {
+      final picked = await ImagePicker()
+          .pickImage(source: source, maxWidth: 1600, imageQuality: 80);
+      if (picked == null) return null;
+      final ext =
+          extension(picked.path).isEmpty ? '.jpg' : extension(picked.path);
+      final name = '${DateTime.now().microsecondsSinceEpoch}$ext';
+      await File(picked.path).copy(join(_dir.path, name));
+      return name;
+    } on PlatformException catch (e) {
+      throw AppException(e.code == 'camera_access_denied' ||
+              e.code == 'photo_access_denied'
+          ? "Accès refusé : autorisez l'appareil photo / les photos dans les réglages."
+          : "Impossible d'ouvrir l'image (${e.message ?? e.code}).");
+    } on FileSystemException {
+      throw const AppException("Impossible d'enregistrer la photo.");
+    }
   }
 
   /// Copies a bundled asset (e.g. assets/vehicles/audi_q3.jpg) into the
