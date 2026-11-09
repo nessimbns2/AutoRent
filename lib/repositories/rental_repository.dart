@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import '../core/constants/business_rules.dart';
 import '../core/database/database_helper.dart';
 import '../core/utils/app_exception.dart';
+import '../core/utils/formatters.dart';
 import '../models/enums.dart';
 import '../models/rental.dart';
 
@@ -80,6 +81,25 @@ class RentalRepository {
 
   Future<List<RentalView>> getViewsByVehicle(int vehicleId) =>
       queryViews('r.vehicle_id = ?', [vehicleId]);
+
+  /// Every day (`yyyy-MM-dd`) a vehicle is reserved or rented.
+  Future<Set<String>> bookedDays(int vehicleId, {int? excludeId}) async {
+    final days = <String>{};
+    for (final v in await getViewsByVehicle(vehicleId)) {
+      final r = v.rental;
+      if (r.id == excludeId ||
+          (r.status != RentalStatus.reservee &&
+              r.status != RentalStatus.enCours)) {
+        continue;
+      }
+      for (var d = r.startDate;
+          !d.isAfter(r.endDate);
+          d = d.add(const Duration(days: 1))) {
+        days.add(toIsoDate(d));
+      }
+    }
+    return days;
+  }
 
   Future<RentalView?> getViewById(int id) async {
     final list = await queryViews('r.id = ?', [id]);
