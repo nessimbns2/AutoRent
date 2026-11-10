@@ -130,12 +130,9 @@ class _Hero extends StatelessWidget {
                 style: const TextStyle(color: Colors.white70, fontSize: 11.5)),
           ]),
         );
-    return Container(
+    return AuroraBackground(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-      decoration: BoxDecoration(
-        gradient: AppColors.heroGradient,
-        borderRadius: BorderRadius.circular(AppRadius.xl),
-      ),
+      borderRadius: BorderRadius.circular(AppRadius.xl),
       child: Column(children: [
         const Align(
           alignment: Alignment.centerLeft,

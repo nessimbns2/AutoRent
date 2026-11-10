@@ -33,10 +33,10 @@ class _ServicesTabState extends State<ServicesTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: GradientFab(
         heroTag: 'fab-services',
         onPressed: _add,
-        backgroundColor: _isMaint ? AppColors.brand : AppColors.danger,
+        backgroundColor: _isMaint ? null : AppColors.danger,
         icon: Icon(_isMaint
             ? Icons.event_repeat_rounded
             : Icons.report_gmailerrorred_rounded),

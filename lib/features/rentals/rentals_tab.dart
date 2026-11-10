@@ -64,7 +64,7 @@ class _RentalsTabState extends State<RentalsTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: GradientFab(
         heroTag: 'fab-rentals',
         onPressed: _openForm,
         icon: const Icon(Icons.add_rounded),

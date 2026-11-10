@@ -1,36 +1,39 @@
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
-/// AutoRent design system — "Midnight & Sunset" palette.
+/// AutoRent design system — "Sunset Premium".
 ///
-/// A deep navy ink paired with a warm sunset orange, soft grey surfaces,
-/// generous radii and the Poppins type family.
+/// A deep midnight ink, a sunset gradient (amber → orange → coral) kept for
+/// the key actions, frosted-glass surfaces, soft layered shadows instead of
+/// borders, generous radii and the Poppins type family.
 class AppColors {
   AppColors._();
 
   // Brand
   static const brand = Color(0xFFFF6B2C);
-  static const brandDark = Color(0xFFE5551A);
-  static const brandSoft = Color(0xFFFFE6DA);
+  static const brandDark = Color(0xFFE8501A);
+  static const brandSoft = Color(0xFFFFE9DE);
+  static const amber = Color(0xFFFFA24C);
+  static const coral = Color(0xFFFF4E5B);
 
-  // Ink (navy)
-  static const ink = Color(0xFF0E1726);
-  static const ink2 = Color(0xFF1C2638);
-  static const ink3 = Color(0xFF2A3650);
+  // Ink (midnight)
+  static const ink = Color(0xFF0B1220);
+  static const ink2 = Color(0xFF151E33);
+  static const ink3 = Color(0xFF243052);
 
   // Neutrals (light)
-  static const background = Color(0xFFF4F6FA);
+  static const background = Color(0xFFF4F5F9);
   static const surface = Colors.white;
-  static const surfaceAlt = Color(0xFFEFF2F7);
-  static const border = Color(0xFFE5E8EF);
-  static const muted = Color(0xFF6B7385);
+  static const surfaceAlt = Color(0xFFF0F2F7);
+  static const border = Color(0xFFE6E9F0);
+  static const muted = Color(0xFF6B7387);
 
   // Neutrals (dark)
-  static const backgroundDark = Color(0xFF0A0F1A);
-  static const surfaceDark = Color(0xFF141C2A);
-  static const surfaceAltDark = Color(0xFF1C2536);
-  static const borderDark = Color(0xFF263045);
-  static const mutedDark = Color(0xFF94A0B8);
+  static const backgroundDark = Color(0xFF070B14);
+  static const surfaceDark = Color(0xFF0F1626);
+  static const surfaceAltDark = Color(0xFF172036);
+  static const borderDark = Color(0xFF222C44);
+  static const mutedDark = Color(0xFF97A3BC);
 
   // Semantic
   static const success = Color(0xFF16A34A);
@@ -40,18 +43,27 @@ class AppColors {
   static const violet = Color(0xFF7C3AED);
   static const teal = Color(0xFF0D9488);
 
-  /// Hero gradient used by headers, splash and login.
+  /// Hero gradient used by headers, splash and login (see AuroraBackground).
   static const heroGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [ink, ink3],
+    colors: [Color(0xFF0B1220), Color(0xFF111A2E), Color(0xFF1B2542)],
   );
 
+  /// Sunset gradient of the main actions (buttons, active tab, FAB).
   static const brandGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFFFF8A4C), brand, brandDark],
+    colors: [amber, brand, coral],
+    stops: [0.0, 0.55, 1.0],
   );
+
+  /// Two-tone gradient of a tinted accent (icons, KPI badges).
+  static LinearGradient tint(Color c) => LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color.lerp(c, Colors.white, 0.28)!, c],
+      );
 
   /// Pleasant gradients for vehicles without photos, picked by a stable hash.
   static const carGradients = <List<Color>>[
@@ -82,14 +94,14 @@ class AppPalette extends ThemeExtension<AppPalette> {
     muted: AppColors.muted,
     border: AppColors.border,
     surfaceAlt: AppColors.surfaceAlt,
-    cardShadow: Color(0x140E1726),
+    cardShadow: Color(0x120B1220),
   );
 
   static const dark = AppPalette(
     muted: AppColors.mutedDark,
     border: AppColors.borderDark,
     surfaceAlt: AppColors.surfaceAltDark,
-    cardShadow: Color(0x66000000),
+    cardShadow: Color(0x73000000),
   );
 
   @override
@@ -125,14 +137,41 @@ extension AppThemeContext on BuildContext {
   AppPalette get palette =>
       Theme.of(this).extension<AppPalette>() ?? AppPalette.light;
   bool get isDark => Theme.of(this).brightness == Brightness.dark;
+
+  /// Soft layered shadow of the cards (dark mode adds a hairline border,
+  /// see [hairline], since shadows barely show on a dark background).
+  List<BoxShadow> get softShadow => isDark
+      ? const [
+          BoxShadow(
+              color: Color(0x59000000), blurRadius: 24, offset: Offset(0, 10)),
+        ]
+      : const [
+          BoxShadow(
+              color: Color(0x0F0B1220), blurRadius: 28, offset: Offset(0, 12)),
+          BoxShadow(
+              color: Color(0x0A0B1220), blurRadius: 6, offset: Offset(0, 2)),
+        ];
+
+  /// Glow under the sunset-gradient buttons.
+  List<BoxShadow> get brandGlow => [
+        BoxShadow(
+          color: AppColors.brand.withValues(alpha: isDark ? 0.30 : 0.32),
+          blurRadius: 22,
+          offset: const Offset(0, 10),
+        ),
+      ];
+
+  /// Hairline border of the dark-mode cards (transparent in light mode).
+  Color get hairline =>
+      isDark ? Colors.white.withValues(alpha: 0.07) : Colors.transparent;
 }
 
 class AppRadius {
   AppRadius._();
-  static const sm = 10.0;
-  static const md = 14.0;
-  static const lg = 20.0;
-  static const xl = 28.0;
+  static const sm = 12.0;
+  static const md = 16.0;
+  static const lg = 24.0;
+  static const xl = 30.0;
 }
 
 const _font = 'Poppins';
@@ -191,13 +230,13 @@ ThemeData _build(Brightness brightness) {
         headlineLarge: base.textTheme.headlineLarge
             ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.6),
         headlineMedium: base.textTheme.headlineMedium?.copyWith(
-            fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.5),
+            fontSize: 28, fontWeight: FontWeight.w700, letterSpacing: -0.9),
         headlineSmall: base.textTheme.headlineSmall?.copyWith(
-            fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.3),
-        titleLarge: base.textTheme.titleLarge
-            ?.copyWith(fontSize: 19, fontWeight: FontWeight.w600),
-        titleMedium: base.textTheme.titleMedium
-            ?.copyWith(fontSize: 15.5, fontWeight: FontWeight.w600),
+            fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.8),
+        titleLarge: base.textTheme.titleLarge?.copyWith(
+            fontSize: 19, fontWeight: FontWeight.w700, letterSpacing: -0.3),
+        titleMedium: base.textTheme.titleMedium?.copyWith(
+            fontSize: 15.5, fontWeight: FontWeight.w600, letterSpacing: -0.1),
         titleSmall: base.textTheme.titleSmall
             ?.copyWith(fontSize: 13.5, fontWeight: FontWeight.w600),
         bodyLarge: base.textTheme.bodyLarge?.copyWith(fontSize: 15),
@@ -217,9 +256,11 @@ ThemeData _build(Brightness brightness) {
         displayColor: onSurface,
       );
 
+  // Borderless filled fields; the sunset orange outlines the focused one.
   final fieldBorder = OutlineInputBorder(
     borderRadius: BorderRadius.circular(AppRadius.md),
-    borderSide: BorderSide(color: palette.border),
+    borderSide: BorderSide(
+        color: dark ? Colors.white.withValues(alpha: 0.05) : Colors.transparent),
   );
 
   return base.copyWith(
@@ -248,12 +289,14 @@ ThemeData _build(Brightness brightness) {
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        side: BorderSide(color: palette.border.withValues(alpha: 0.7)),
+        side: dark
+            ? BorderSide(color: Colors.white.withValues(alpha: 0.07))
+            : BorderSide.none,
       ),
     ),
     inputDecorationTheme: InputDecorationThemeData(
       filled: true,
-      fillColor: dark ? AppColors.surfaceAltDark : const Color(0xFFF6F7FB),
+      fillColor: dark ? AppColors.surfaceAltDark : const Color(0xFFF2F4F8),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: fieldBorder,
       enabledBorder: fieldBorder,
@@ -274,7 +317,7 @@ ThemeData _build(Brightness brightness) {
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        minimumSize: const Size(64, 54),
+        minimumSize: const Size(64, 56),
         elevation: 0,
         backgroundColor: AppColors.brand,
         foregroundColor: Colors.white,
@@ -286,7 +329,7 @@ ThemeData _build(Brightness brightness) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size(64, 54),
+        minimumSize: const Size(64, 56),
         backgroundColor: AppColors.brand,
         foregroundColor: Colors.white,
         textStyle: text.labelLarge?.copyWith(fontSize: 15),
@@ -326,8 +369,14 @@ ThemeData _build(Brightness brightness) {
     ),
     chipTheme: ChipThemeData(
       backgroundColor: surface,
-      selectedColor: AppColors.ink,
-      labelStyle: text.labelMedium,
+      selectedColor: dark ? Colors.white : AppColors.ink,
+      // Stays readable on the selected colour for chips without own style.
+      labelStyle: text.labelMedium?.copyWith(
+        color: WidgetStateColor.resolveWith((s) =>
+            s.contains(WidgetState.selected)
+                ? (dark ? AppColors.ink : Colors.white)
+                : onSurface),
+      ),
       side: BorderSide(color: palette.border),
       shape: const StadiumBorder(),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -351,7 +400,8 @@ ThemeData _build(Brightness brightness) {
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: dark ? AppColors.surfaceAltDark : AppColors.ink,
+      backgroundColor: dark ? AppColors.ink3 : AppColors.ink,
+      elevation: 8,
       contentTextStyle:
           text.bodyMedium?.copyWith(color: Colors.white, fontFamily: _font),
       shape: RoundedRectangleBorder(
@@ -387,8 +437,8 @@ ThemeData _build(Brightness brightness) {
     ),
     segmentedButtonTheme: SegmentedButtonThemeData(
       style: SegmentedButton.styleFrom(
-        selectedBackgroundColor: AppColors.ink,
-        selectedForegroundColor: Colors.white,
+        selectedBackgroundColor: dark ? Colors.white : AppColors.ink,
+        selectedForegroundColor: dark ? AppColors.ink : Colors.white,
         side: BorderSide(color: palette.border),
         textStyle: text.labelMedium,
         shape: RoundedRectangleBorder(
@@ -401,7 +451,7 @@ ThemeData _build(Brightness brightness) {
     datePickerTheme: DatePickerThemeData(
       backgroundColor: surface,
       surfaceTintColor: Colors.transparent,
-      headerBackgroundColor: AppColors.ink,
+      headerBackgroundColor: dark ? AppColors.ink3 : AppColors.ink,
       headerForegroundColor: Colors.white,
       rangeSelectionBackgroundColor: AppColors.brand.withValues(alpha: 0.14),
       shape: RoundedRectangleBorder(

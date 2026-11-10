@@ -80,7 +80,7 @@ class _MaintenanceHistoryScreenState extends State<MaintenanceHistoryScreen> {
                 ],
               ),
             ),
-            floatingActionButton: FloatingActionButton.extended(
+            floatingActionButton: GradientFab(
               onPressed: () => _open(Routes.maintenanceForm,
                   MaintenanceFormArgs(vehicleId: widget.vehicleId)),
               icon: const Icon(Icons.event_repeat_rounded),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/widgets/shared_widgets.dart';
 
 /// AutoRent logo: gradient rounded square with a car glyph.
 class AppLogo extends StatelessWidget {
@@ -48,20 +49,8 @@ class AuthLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.ink,
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.heroGradient),
+      body: AuroraBackground(
         child: Stack(children: [
-          // Decorative glows
-          Positioned(
-            top: -80,
-            right: -60,
-            child: _Glow(color: AppColors.brand.withValues(alpha: 0.35)),
-          ),
-          Positioned(
-            top: 120,
-            left: -90,
-            child: _Glow(color: AppColors.info.withValues(alpha: 0.18)),
-          ),
           SafeArea(
             bottom: false,
             child: CustomScrollView(
@@ -86,8 +75,10 @@ class AuthLayout extends StatelessWidget {
                           const SizedBox(height: 22),
                         ],
                         Text(title,
-                            style: context.text.headlineMedium
-                                ?.copyWith(color: Colors.white)),
+                            style: context.text.headlineMedium?.copyWith(
+                                color: Colors.white,
+                                fontSize: 32,
+                                letterSpacing: -1.1)),
                         const SizedBox(height: 6),
                         Text(subtitle,
                             style: context.text.bodyMedium?.copyWith(
@@ -103,7 +94,7 @@ class AuthLayout extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: context.theme.scaffoldBackgroundColor,
                       borderRadius:
-                          const BorderRadius.vertical(top: Radius.circular(32)),
+                          const BorderRadius.vertical(top: Radius.circular(36)),
                     ),
                     padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
                     child: SafeArea(top: false, child: child),
@@ -116,19 +107,4 @@ class AuthLayout extends StatelessWidget {
       ),
     );
   }
-}
-
-class _Glow extends StatelessWidget {
-  final Color color;
-  const _Glow({required this.color});
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: 260,
-        height: 260,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
-        ),
-      );
 }

@@ -129,11 +129,8 @@ class _AccountTabState extends State<AccountTab> {
       padding: EdgeInsets.zero,
       children: [
         // ── Profile header ─────────────────────────────────────────────────
-        Container(
-          decoration: const BoxDecoration(
-            gradient: AppColors.heroGradient,
-            borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
-          ),
+        AuroraBackground(
+          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(36)),
           child: SafeArea(
             bottom: false,
             child: Padding(

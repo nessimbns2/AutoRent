@@ -40,7 +40,7 @@ class _ClientListScreenState extends State<ClientListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Locataires')),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: GradientFab(
         onPressed: () => _open(Routes.clientForm),
         icon: const Icon(Icons.person_add_alt_1_rounded),
         label: const Text('Locataire'),

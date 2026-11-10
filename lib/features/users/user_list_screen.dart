@@ -39,7 +39,7 @@ class _UserListScreenState extends State<UserListScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Utilisateurs')),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: GradientFab(
         onPressed: () => _open(Routes.userForm),
         icon: const Icon(Icons.person_add_alt_1_rounded),
         label: const Text('Agent'),

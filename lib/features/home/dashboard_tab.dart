@@ -31,7 +31,9 @@ class _DashboardTabState extends State<DashboardTab> {
     return _repo.load();
   }
 
-  void _reload() => setState(() { _future = _load(); });
+  void _reload() => setState(() {
+    _future = _load();
+  });
 
   Future<void> _open(String route, {Object? args}) async {
     final changed = await Navigator.pushNamed(context, route, arguments: args);
@@ -48,7 +50,8 @@ class _DashboardTabState extends State<DashboardTab> {
         }
         if (snap.hasError) {
           return SafeArea(
-              child: ErrorView(error: snap.error!, onRetry: _reload));
+            child: ErrorView(error: snap.error!, onRetry: _reload),
+          );
         }
         final d = snap.data!;
         return RefreshIndicator(
@@ -57,11 +60,12 @@ class _DashboardTabState extends State<DashboardTab> {
             padding: EdgeInsets.zero,
             children: [
               _Header(
-                  data: d,
-                  onOpenNotifications: () async {
-                    await Navigator.pushNamed(context, Routes.notifications);
-                    if (mounted) _reload();
-                  }),
+                data: d,
+                onOpenNotifications: () async {
+                  await Navigator.pushNamed(context, Routes.notifications);
+                  if (mounted) _reload();
+                },
+              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
                 child: Column(
@@ -86,7 +90,9 @@ class _DashboardTabState extends State<DashboardTab> {
                     _QuickActions(onOpen: _open),
                     const SizedBox(height: 18),
                     _FleetCard(
-                        fleet: d.fleet, onTap: () => widget.onGoToTab(1)),
+                      fleet: d.fleet,
+                      onTap: () => widget.onGoToTab(1),
+                    ),
                     const SizedBox(height: 10),
                     SectionHeader(
                       title: "À traiter aujourd'hui",
@@ -95,16 +101,20 @@ class _DashboardTabState extends State<DashboardTab> {
                     ),
                     if (d.departures.isEmpty && d.returns.isEmpty)
                       const AppCard(
-                        child: Row(children: [
-                          IconBadge(
+                        child: Row(
+                          children: [
+                            IconBadge(
                               icon: Icons.beach_access_rounded,
-                              color: AppColors.success),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                                'Aucun départ ni retour en attente. Belle journée !'),
-                          ),
-                        ]),
+                              color: AppColors.success,
+                            ),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Aucun départ ni retour en attente. Belle journée !',
+                              ),
+                            ),
+                          ],
+                        ),
                       )
                     else ...[
                       for (final v in d.departures)
@@ -113,41 +123,56 @@ class _DashboardTabState extends State<DashboardTab> {
                           color: AppColors.warning,
                           icon: Icons.north_east_rounded,
                           title: splitVehicleLabel(v.vehicleLabel).$1,
-                          subtitle: '${v.clientName} · ${relativeDay(v.rental.startDate)}',
-                          onTap: () => _open(Routes.rentalDetail,
-                              args: IdArgs(v.rental.id!)),
+                          subtitle:
+                              '${v.clientName} · ${relativeDay(v.rental.startDate)}',
+                          onTap: () => _open(
+                            Routes.rentalDetail,
+                            args: IdArgs(v.rental.id!),
+                          ),
                         ),
                       for (final v in d.returns)
                         _AgendaTile(
-                          label: isRentalOverdue(v.rental) ? 'En retard' : 'Retour',
+                          label: isRentalOverdue(v.rental)
+                              ? 'En retard'
+                              : 'Retour',
                           color: isRentalOverdue(v.rental)
                               ? AppColors.danger
                               : AppColors.info,
                           icon: Icons.south_west_rounded,
                           title: splitVehicleLabel(v.vehicleLabel).$1,
-                          subtitle: '${v.clientName} · ${relativeDay(v.rental.endDate)}',
-                          onTap: () => _open(Routes.rentalDetail,
-                              args: IdArgs(v.rental.id!)),
+                          subtitle:
+                              '${v.clientName} · ${relativeDay(v.rental.endDate)}',
+                          onTap: () => _open(
+                            Routes.rentalDetail,
+                            args: IdArgs(v.rental.id!),
+                          ),
                         ),
                     ],
                     const SizedBox(height: 10),
                     SectionHeader(
                       title: 'Entretiens à venir',
                       actionLabel: 'Tout voir',
-                      onAction: () => widget.onGoToTab(3,
-                          segment: ServicesSegment.maintenances),
+                      onAction: () => widget.onGoToTab(
+                        3,
+                        segment: ServicesSegment.maintenances,
+                      ),
                     ),
                     if (d.upcomingMaintenances.isEmpty)
                       const AppCard(
-                        child: Row(children: [
-                          IconBadge(
+                        child: Row(
+                          children: [
+                            IconBadge(
                               icon: Icons.verified_rounded,
-                              color: AppColors.success),
-                          SizedBox(width: 12),
-                          Expanded(
+                              color: AppColors.success,
+                            ),
+                            SizedBox(width: 12),
+                            Expanded(
                               child: Text(
-                                  'Aucun entretien prévu dans les 14 prochains jours.')),
-                        ]),
+                                'Aucun entretien prévu dans les 14 prochains jours.',
+                              ),
+                            ),
+                          ],
+                        ),
                       )
                     else
                       for (final m in d.upcomingMaintenances)
@@ -158,8 +183,10 @@ class _DashboardTabState extends State<DashboardTab> {
                           title:
                               '${m.maintenance.type} · ${splitVehicleLabel(m.vehicleLabel).$1}',
                           subtitle: relativeDay(m.maintenance.date),
-                          onTap: () => _open(Routes.maintenanceDetail,
-                              args: IdArgs(m.maintenance.id!)),
+                          onTap: () => _open(
+                            Routes.maintenanceDetail,
+                            args: IdArgs(m.maintenance.id!),
+                          ),
                         ),
                   ],
                 ),
@@ -188,80 +215,95 @@ class _Header extends StatelessWidget {
     final trend = data.revenueTrend;
     final now = DateTime.now();
 
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: AppColors.heroGradient,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
-      ),
+    return AuroraBackground(
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(36)),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 16, 22),
+          padding: const EdgeInsets.fromLTRB(20, 14, 16, 26),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(children: [
-                AvatarCircle(
-                  initials: user?.initials ?? 'AR',
-                  photoFile: user?.photoFile,
-                  size: 46,
-                  color: AppColors.brand,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('$greeting, ${user?.firstName ?? ''}',
-                          style: context.text.titleMedium
-                              ?.copyWith(color: Colors.white)),
-                      Text(
-                        formatLongDay(now).replaceRange(
-                            0, 1, formatLongDay(now)[0].toUpperCase()),
-                        style: context.text.bodySmall?.copyWith(
-                            color: Colors.white.withValues(alpha: 0.65)),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(2.5),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: AppColors.brandGradient,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.ink,
                       ),
-                    ],
+                      child: AvatarCircle(
+                        initials: user?.initials ?? 'AR',
+                        photoFile: user?.photoFile,
+                        size: 42,
+                        color: AppColors.ink3,
+                      ),
+                    ),
                   ),
-                ),
-                ValueListenableBuilder<int>(
-                  valueListenable: NotificationService.instance.unread,
-                  builder: (context, count, _) => CircleIconButton(
-                    icon: count > 0
-                        ? Icons.notifications_active_rounded
-                        : Icons.notifications_none_rounded,
-                    tooltip: 'Notifications',
-                    color: Colors.white,
-                    background: Colors.white.withValues(alpha: 0.12),
-                    badge: count > 0 ? count : null,
-                    onPressed: onOpenNotifications,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          formatLongDay(now).toUpperCase(),
+                          style: context.text.labelSmall?.copyWith(
+                            color: Colors.white.withValues(alpha: 0.55),
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$greeting, ${user?.firstName ?? ''}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.text.titleLarge?.copyWith(
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                ValueListenableBuilder<ThemeMode>(
-                  valueListenable: ThemeController.instance.mode,
-                  builder: (context, mode, _) => CircleIconButton(
-                    icon: mode == ThemeMode.dark
-                        ? Icons.light_mode_rounded
-                        : Icons.dark_mode_rounded,
-                    tooltip: mode == ThemeMode.dark
-                        ? 'Mode clair'
-                        : 'Mode sombre',
-                    color: Colors.white,
-                    background: Colors.white.withValues(alpha: 0.12),
-                    onPressed: () => ThemeController.instance
-                        .setDark(mode != ThemeMode.dark),
+                  ValueListenableBuilder<int>(
+                    valueListenable: NotificationService.instance.unread,
+                    builder: (context, count, _) => CircleIconButton(
+                      icon: count > 0
+                          ? Icons.notifications_active_rounded
+                          : Icons.notifications_none_rounded,
+                      tooltip: 'Notifications',
+                      color: Colors.white,
+                      background: Colors.white.withValues(alpha: 0.10),
+                      badge: count > 0 ? count : null,
+                      onPressed: onOpenNotifications,
+                    ),
                   ),
-                ),
-              ]),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.07),
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                ),
+                  ValueListenableBuilder<ThemeMode>(
+                    valueListenable: ThemeController.instance.mode,
+                    builder: (context, mode, _) => CircleIconButton(
+                      icon: mode == ThemeMode.dark
+                          ? Icons.light_mode_rounded
+                          : Icons.dark_mode_rounded,
+                      tooltip: mode == ThemeMode.dark
+                          ? 'Mode clair'
+                          : 'Mode sombre',
+                      color: Colors.white,
+                      background: Colors.white.withValues(alpha: 0.10),
+                      onPressed: () => ThemeController.instance.setDark(
+                        mode != ThemeMode.dark,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 22),
+              GlassPanel(
+                padding: const EdgeInsets.fromLTRB(20, 18, 18, 18),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -269,19 +311,45 @@ class _Header extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text("Chiffre d'affaires · ${monthLabel(now.month)}",
-                              style: context.text.bodySmall?.copyWith(
-                                  color:
-                                      Colors.white.withValues(alpha: 0.65))),
-                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: AppColors.brandGradient,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  "Chiffre d'affaires · ${monthLabel(now.month)}",
+                                  overflow: TextOverflow.ellipsis,
+                                  style: context.text.bodySmall?.copyWith(
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerLeft,
-                            child: Text(formatMoneyShort(data.monthRevenue),
-                                style: context.text.headlineMedium
-                                    ?.copyWith(color: Colors.white)),
+                            child: Text(
+                              formatMoneyShort(data.monthRevenue),
+                              style: context.text.headlineMedium?.copyWith(
+                                color: Colors.white,
+                                fontSize: 32,
+                                letterSpacing: -1.2,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           if (trend != null)
                             StatusChip(
                               label:
@@ -294,10 +362,12 @@ class _Header extends StatelessWidget {
                                   : Icons.trending_down_rounded,
                             )
                           else
-                            Text('Locations non annulées',
-                                style: context.text.bodySmall?.copyWith(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.5))),
+                            Text(
+                              'Locations non annulées',
+                              style: context.text.bodySmall?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.5),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -337,28 +407,57 @@ class _MiniBars extends StatelessWidget {
                   children: [
                     TweenAnimationBuilder<double>(
                       tween: Tween(
-                          begin: 0,
-                          end: max == 0 ? 0.06 : (revenue[i].amount / max)
-                              .clamp(0.06, 1.0)),
+                        begin: 0,
+                        end: max == 0
+                            ? 0.06
+                            : (revenue[i].amount / max).clamp(0.06, 1.0),
+                      ),
                       duration: Duration(milliseconds: 500 + i * 80),
                       curve: Curves.easeOutCubic,
-                      builder: (_, v, _) => Container(
-                        width: 12,
-                        height: 62 * v,
-                        decoration: BoxDecoration(
-                          color: i == revenue.length - 1
-                              ? AppColors.brand
-                              : Colors.white.withValues(alpha: 0.22),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
+                      builder: (_, v, _) {
+                        final current = i == revenue.length - 1;
+                        return Container(
+                          width: 12,
+                          height: 62 * v,
+                          decoration: BoxDecoration(
+                            gradient: current
+                                ? const LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [AppColors.amber, AppColors.coral],
+                                  )
+                                : LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.white.withValues(alpha: 0.30),
+                                      Colors.white.withValues(alpha: 0.10),
+                                    ],
+                                  ),
+                            borderRadius: BorderRadius.circular(6),
+                            boxShadow: current
+                                ? [
+                                    BoxShadow(
+                                      color: AppColors.brand.withValues(
+                                        alpha: 0.5,
+                                      ),
+                                      blurRadius: 12,
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      monthLabel(revenue[i].month).substring(0, 1).toUpperCase(),
+                      monthLabel(revenue[i].month)
+                          .substring(0, 1)
+                          .toUpperCase(),
                       style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.white.withValues(alpha: 0.6)),
+                        fontSize: 10,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
                     ),
                   ],
                 ),
@@ -410,19 +509,25 @@ class _KpiGrid extends StatelessWidget {
         onTap: () => onGoToTab(3, segment: ServicesSegment.incidents),
       ),
     ];
-    return Column(children: [
-      Row(children: [
-        Expanded(child: cards[0]),
-        const SizedBox(width: 12),
-        Expanded(child: cards[1]),
-      ]),
-      const SizedBox(height: 12),
-      Row(children: [
-        Expanded(child: cards[2]),
-        const SizedBox(width: 12),
-        Expanded(child: cards[3]),
-      ]),
-    ]);
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: cards[0]),
+            const SizedBox(width: 12),
+            Expanded(child: cards[1]),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: cards[2]),
+            const SizedBox(width: 12),
+            Expanded(child: cards[3]),
+          ],
+        ),
+      ],
+    );
   }
 }
 
@@ -442,30 +547,58 @@ class _Kpi extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AppCard(
-        onTap: onTap,
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    onTap: onTap,
+    padding: const EdgeInsets.fromLTRB(16, 16, 14, 14),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(children: [
-              IconBadge(icon: icon, color: color, size: 38, iconSize: 20),
-              const Spacer(),
-              Icon(Icons.arrow_outward_rounded,
-                  size: 18, color: context.palette.muted),
-            ]),
-            const SizedBox(height: 12),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(value, style: context.text.headlineSmall),
+            IconBadge(
+              icon: icon,
+              color: color,
+              size: 40,
+              iconSize: 20,
+              filled: true,
             ),
-            Text(label,
-                style: context.text.bodySmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
+            const Spacer(),
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: context.palette.surfaceAlt,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.arrow_outward_rounded,
+                size: 15,
+                color: context.palette.muted,
+              ),
+            ),
           ],
         ),
-      );
+        const SizedBox(height: 14),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: context.text.headlineSmall?.copyWith(
+              fontSize: 28,
+              letterSpacing: -1,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+        Text(
+          label,
+          style: context.text.bodySmall,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -479,15 +612,27 @@ class _QuickActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = [
       (Icons.car_rental_rounded, 'Louer', AppColors.brand, Routes.rentalForm),
-      (Icons.add_circle_outline_rounded, 'Véhicule', AppColors.info,
-          Routes.vehicleForm),
-      (Icons.build_rounded, 'Entretien', AppColors.teal,
-          Routes.maintenanceForm),
-      (Icons.report_gmailerrorred_rounded, 'Incident', AppColors.danger,
-          Routes.incidentForm),
+      (
+        Icons.add_circle_outline_rounded,
+        'Véhicule',
+        AppColors.info,
+        Routes.vehicleForm,
+      ),
+      (
+        Icons.build_rounded,
+        'Entretien',
+        AppColors.teal,
+        Routes.maintenanceForm,
+      ),
+      (
+        Icons.report_gmailerrorred_rounded,
+        'Incident',
+        AppColors.danger,
+        Routes.incidentForm,
+      ),
     ];
     return AppCard(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
       child: Row(
         children: [
           for (final a in actions)
@@ -497,11 +642,19 @@ class _QuickActions extends StatelessWidget {
                 onTap: () => onOpen(a.$4),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Column(children: [
-                    IconBadge(icon: a.$1, color: a.$3, size: 50, filled: true),
-                    const SizedBox(height: 8),
-                    Text(a.$2, style: context.text.labelMedium),
-                  ]),
+                  child: Column(
+                    children: [
+                      IconBadge(
+                        icon: a.$1,
+                        color: a.$3,
+                        size: 54,
+                        iconSize: 26,
+                        filled: true,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(a.$2, style: context.text.labelMedium),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -532,33 +685,50 @@ class _FleetCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Expanded(
-                child: Text('État de la flotte',
-                    style: context.text.titleSmall)),
-            Text('${(fleet.occupancy * 100).toStringAsFixed(0)} % louée',
-                style: context.text.labelMedium
-                    ?.copyWith(color: AppColors.brand)),
-          ]),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'État de la flotte',
+                  style: context.text.titleSmall,
+                ),
+              ),
+              Text(
+                '${(fleet.occupancy * 100).toStringAsFixed(0)} % louée',
+                style: context.text.labelMedium?.copyWith(
+                  color: AppColors.brand,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              height: 12,
-              child: fleet.total == 0
-                  ? ColoredBox(color: context.palette.surfaceAlt)
-                  : Row(children: [
+          SizedBox(
+            height: 14,
+            child: fleet.total == 0
+                ? DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: context.palette.surfaceAlt,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  )
+                : Row(
+                    children: [
                       for (final p in parts)
                         if (p.$2 > 0)
                           Expanded(
                             flex: p.$2,
                             child: Container(
-                              margin: const EdgeInsets.only(right: 2),
-                              color: p.$3,
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 1.5,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: AppColors.tint(p.$3),
+                                borderRadius: BorderRadius.circular(7),
+                              ),
                             ),
                           ),
-                    ]),
-            ),
+                    ],
+                  ),
           ),
           const SizedBox(height: 14),
           Wrap(
@@ -566,17 +736,22 @@ class _FleetCard extends StatelessWidget {
             runSpacing: 8,
             children: [
               for (final p in parts)
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                        color: p.$3, borderRadius: BorderRadius.circular(3)),
-                  ),
-                  const SizedBox(width: 6),
-                  Text('${p.$1} ', style: context.text.bodySmall),
-                  Text('${p.$2}', style: context.text.labelMedium),
-                ]),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: p.$3,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('${p.$1} ', style: context.text.bodySmall),
+                    Text('${p.$2}', style: context.text.labelMedium),
+                  ],
+                ),
             ],
           ),
         ],
@@ -603,28 +778,34 @@ class _AgendaTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AppCard(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
-        onTap: onTap,
-        child: Row(children: [
-          IconBadge(icon: icon, color: color, size: 42),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: context.text.titleSmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                Text(subtitle,
-                    style: context.text.bodySmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-              ],
-            ),
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.all(12),
+    onTap: onTap,
+    child: Row(
+      children: [
+        IconBadge(icon: icon, color: color, size: 42),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: context.text.titleSmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                subtitle,
+                style: context.text.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
-          StatusChip(label: label, color: color),
-        ]),
-      );
+        ),
+        StatusChip(label: label, color: color),
+      ],
+    ),
+  );
 }

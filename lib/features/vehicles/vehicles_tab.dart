@@ -161,7 +161,7 @@ class _VehiclesTabState extends State<VehiclesTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: GradientFab(
         heroTag: 'fab-vehicles',
         onPressed: _openForm,
         icon: const Icon(Icons.add_rounded),
@@ -291,7 +291,7 @@ class _VehiclesTabState extends State<VehiclesTab> {
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 96),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 230,
-          mainAxisExtent: 262,
+          mainAxisExtent: 276,
           crossAxisSpacing: 14,
           mainAxisSpacing: 14,
         ),

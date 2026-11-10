@@ -501,12 +501,9 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = overdue ? AppColors.danger : rentalStatusColor(rental.status);
-    return Container(
+    return AuroraBackground(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: AppColors.heroGradient,
-        borderRadius: BorderRadius.circular(AppRadius.lg + 4),
-      ),
+      borderRadius: BorderRadius.circular(AppRadius.lg + 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

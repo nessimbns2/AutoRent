@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../core/session/session_manager.dart';
+import '../../core/widgets/shared_widgets.dart';
 import '../auth/widgets/auth_layout.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -45,8 +46,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.heroGradient),
+      body: AuroraBackground(
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -56,18 +56,14 @@ class _SplashScreenState extends State<SplashScreen>
               FadeTransition(
                 opacity: _fade,
                 child: Column(children: [
-                  Text.rich(
-                    TextSpan(children: [
-                      TextSpan(
-                          text: 'Auto',
-                          style: context.text.headlineLarge
-                              ?.copyWith(color: Colors.white)),
-                      TextSpan(
-                          text: 'Rent',
-                          style: context.text.headlineLarge
-                              ?.copyWith(color: AppColors.brand)),
-                    ]),
-                  ),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text('Auto',
+                        style: context.text.headlineLarge
+                            ?.copyWith(color: Colors.white, letterSpacing: -1)),
+                    GradientText('Rent',
+                        style: context.text.headlineLarge
+                            ?.copyWith(color: Colors.white, letterSpacing: -1)),
+                  ]),
                   const SizedBox(height: 6),
                   Text(
                     'Location de voitures, simplifiée',
