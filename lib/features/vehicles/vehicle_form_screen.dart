@@ -245,6 +245,7 @@ class _VehicleFormScreenState extends State<VehicleFormScreen> {
               color: AppColors.violet,
               children: [
                 PhotoPickerField(
+                  cloud: true,
                   fileNames: _photos,
                   maxPhotos: 6,
                   coverSelectable: true,

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../app/theme.dart';
 import '../services/image_storage.dart';
+import '../services/supabase_storage.dart';
 import '../utils/app_exception.dart';
 import '../utils/ui_helpers.dart';
 
@@ -1412,7 +1413,19 @@ class CarImage extends StatelessWidget {
       cacheWidth: (width != null && width!.isFinite)
           ? (width! * MediaQuery.devicePixelRatioOf(context)).round()
           : 800,
-      errorBuilder: (_, _, _) => placeholder,
+      // Missing locally (new device): show the cloud copy, if any.
+      errorBuilder: (_, _, _) => SupabaseStorage.enabled
+          ? Image.network(
+              SupabaseStorage.publicUrl(fileName!),
+              fit: fit,
+              width: width,
+              height: height,
+              cacheWidth: (width != null && width!.isFinite)
+                  ? (width! * MediaQuery.devicePixelRatioOf(context)).round()
+                  : 800,
+              errorBuilder: (_, _, _) => placeholder,
+            )
+          : placeholder,
     );
   }
 }
@@ -1463,12 +1476,16 @@ class PhotoPickerField extends StatefulWidget {
   /// Shows a "Couverture" label on the first photo and a star on the others
   /// to make them the cover (moved to the first position).
   final bool coverSelectable;
+
+  /// Also uploads each new photo to the Supabase bucket (vehicle photos).
+  final bool cloud;
   const PhotoPickerField({
     super.key,
     required this.fileNames,
     required this.onChanged,
     this.maxPhotos = 6,
     this.coverSelectable = false,
+    this.cloud = false,
   });
 
   @override
@@ -1489,7 +1506,7 @@ class _PhotoPickerFieldState extends State<PhotoPickerField> {
     if (source == null || !mounted) return;
     String? name;
     try {
-      name = await ImageStorage.pickAndSave(source);
+      name = await ImageStorage.pickAndSave(source, cloud: widget.cloud);
     } on AppException catch (e) {
       if (mounted) showSnack(context, e.message, kind: SnackKind.error);
       return;

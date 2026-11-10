@@ -8,6 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'app/app.dart';
 import 'core/database/database_helper.dart';
 import 'core/services/image_storage.dart';
+import 'core/services/supabase_storage.dart';
 import 'core/services/theme_controller.dart';
 import 'core/session/session_manager.dart';
 
@@ -24,6 +25,7 @@ Future<void> main() async {
     statusBarColor: Colors.transparent,
   ));
 
+  SupabaseStorage.enabled = true; //         vehicle photos also stored in Supabase
   await ImageStorage.init(); //              photos folder (needed by the demo data)
   await DatabaseHelper.instance.database; // open SQLite + create/upgrade + seed
   await ThemeController.instance.init(); //  light / dark preference

@@ -107,7 +107,7 @@ class VehicleRepository {
       rethrow;
     }
     for (final f in photos) {
-      await ImageStorage.delete(f);
+      await ImageStorage.delete(f, cloud: true);
     }
   }
 
