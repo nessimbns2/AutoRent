@@ -88,6 +88,8 @@ class _DashboardTabState extends State<DashboardTab> {
                     _KpiGrid(data: d, onGoToTab: widget.onGoToTab),
                     const SizedBox(height: 18),
                     _QuickActions(onOpen: _open),
+                    const SizedBox(height: 14),
+                    _AssistantBanner(onTap: () => _open(Routes.assistant)),
                     const SizedBox(height: 18),
                     _FleetCard(
                       fleet: d.fleet,
@@ -806,6 +808,68 @@ class _AgendaTile extends StatelessWidget {
         ),
         StatusChip(label: label, color: color),
       ],
+    ),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Assistant banner — opens the Groq chatbot
+// ─────────────────────────────────────────────────────────────────────────────
+class _AssistantBanner extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AssistantBanner({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => AuroraBackground(
+    borderRadius: BorderRadius.circular(AppRadius.lg),
+    child: Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  gradient: AppColors.brandGradient,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: context.brandGlow,
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Assistant AutoRent',
+                      style: context.text.titleMedium?.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      'Posez une question sur la flotte, les prix…',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.text.bodySmall?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_rounded, color: Colors.white),
+            ],
+          ),
+        ),
+      ),
     ),
   );
 }

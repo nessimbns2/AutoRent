@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/session/session_manager.dart';
+import '../features/assistant/assistant_screen.dart';
 import '../features/auth/forgot_password_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/recovery_key_screen.dart';
@@ -90,6 +91,8 @@ class AppRouter {
             RecoveryKeyScreen(
                 firstTime: session.currentUser?.recoveryKeyHash == null),
             s);
+      case Routes.assistant:
+        return _page(const AssistantScreen(), s);
       case Routes.security:
         return _page(const SecurityScreen(), s);
       case Routes.users:

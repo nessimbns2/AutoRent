@@ -223,6 +223,13 @@ class _AccountTabState extends State<AccountTab> {
                   subtitle: 'Longue durée, haute saison, week-end',
                   onTap: () => _open(Routes.pricing),
                 ),
+                _MenuTile(
+                  icon: Icons.auto_awesome_rounded,
+                  color: AppColors.brand,
+                  title: 'Assistant AutoRent',
+                  subtitle: 'Chatbot Groq : flotte, prix, activité',
+                  onTap: () => _open(Routes.assistant),
+                ),
               ]),
               _group(context, 'Données', [
                 _MenuTile(

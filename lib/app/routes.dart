@@ -14,6 +14,7 @@ class Routes {
   static const notifications = '/notifications';
   static const recoveryKey = '/recovery-key';
   static const security = '/security';
+  static const assistant = '/assistant';
 
   // users
   static const users = '/users';

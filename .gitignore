@@ -50,3 +50,6 @@ app.*.map.json
 /docs/LOCATION.md
 /docs/LOCATION*.pdf
 /mail.env.json
+
+# Local secret: Groq API key (read by the assistant on this PC only)
+groq_api_key.txt
